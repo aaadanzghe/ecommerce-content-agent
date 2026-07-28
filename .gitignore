@@ -1,0 +1,90 @@
+# ============================================================
+# .gitignore - ecommerce-copywriter-llm
+# ============================================================
+
+# === 原始数据集（太大，不传 GitHub）===
+data/raw/tianchi/
+data/raw/AdvertiseGen/
+*.zip
+*.tar.gz
+*.tar
+
+# === 旧模拟数据脚本（已废弃）===
+data/generate_simulated.py
+data/raw/3c_digital.json
+data/raw/beauty.json
+data/raw/food.json
+data/raw/home.json
+
+# === 模型文件 ===
+models/
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.ckpt
+
+# === 训练输出 ===
+output/
+checkpoint*/
+wandb/
+runs/
+logs/
+
+# === LLaMA-Factory（clone 的外部仓库）===
+LLaMA-Factory/
+
+# === 面试文档（不公开）===
+面试文档-润色版/
+面试文档/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# === 虚拟环境 ===
+venv/
+env/
+ENV/
+.venv/
+.env
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === 系统 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Jupyter ===
+.ipynb_checkpoints/
+*.ipynb
+
+# === 日志 ===
+*.log
+*.out
+*.err

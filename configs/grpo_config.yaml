@@ -1,0 +1,73 @@
+# ============================================================
+# 电商文案生成 - GRPO 对齐训练配置
+# 目标: 云端 A100/H100 上对 Qwen3.5-35B-A3B MoE 做 GRPO 对齐
+# 框架: LLaMA-Factory (GRPO 插件)
+# 注意: 此配置需要云端 GPU（A100 40GB+），本地 5070Ti 12GB 无法运行
+# ============================================================
+
+### 模型配置
+model_name_or_path: "Qwen/Qwen3.5-35B-A3B-Instruct"  # 云端模型路径
+template: qwen
+trust_remote_code: true
+
+### 数据集
+dataset: ecommerce_copywriting
+val_size: 0.0
+eval_dataset: ecommerce_copywriting_val
+cutoff_len: 1024
+
+### 输出
+output_dir: "./output/ecommerce_grpo_aligned"
+logging_steps: 5
+save_steps: 100
+save_total_limit: 2
+
+### 量化配置（云端 A100 40GB 可用 4-bit）
+quantization_method: bitsandbytes
+load_in_4bit: true
+bnb_4bit_compute_dtype: "bfloat16"
+bnb_4bit_quant_type: "nf4"
+bnb_4bit_use_double_quant: true
+
+### LoRA 参数
+lora_rank: 32
+lora_alpha: 64
+lora_target: "all"
+lora_dropout: 0.1
+
+### GRPO 训练超参数
+finetuning_type: lora
+stage: grpo
+learning_rate: 5.0e-6
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+num_train_epochs: 1.0
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+max_grad_norm: 1.0
+optim: adamw_8bit
+
+### GRPO 特有参数
+grpo_beta: 0.01                        # KL 惩罚系数
+grpo_epsilon: 0.2                      # PPO clip 范围
+grpo_temperature: 0.7                  # 采样温度
+grpo_top_p: 0.9
+grpo_max_new_tokens: 512
+grpo_num_generations: 4                # 每 prompt 生成 4 个候选
+grpo_reward_model: "llm_judge"         # 使用 LLM-as-Judge 作为 Reward
+
+### Reward 维度权重
+reward_weights:
+  accuracy: 0.35        # 信息准确性
+  attractiveness: 0.30  # 文案吸引力
+  compliance: 0.20      # 合规性
+  seo: 0.15             # SEO 关键词覆盖
+
+### 混合精度
+bf16: true
+
+### 评估
+do_eval: true
+evaluation_strategy: steps
+eval_steps: 100
+generation_max_length: 512
