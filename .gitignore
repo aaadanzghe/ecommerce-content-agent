@@ -35,9 +35,10 @@ logs/
 # === LLaMA-Factory（clone 的外部仓库）===
 LLaMA-Factory/
 
-# === 面试文档（不公开）===
+# === 面试准备文档（不公开）===
 面试文档-润色版/
 面试文档/
+02-岗位分析.md
 
 # === Python ===
 __pycache__/
