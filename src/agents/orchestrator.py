@@ -130,7 +130,8 @@ class ContentOrchestrator:
                     "rewrite_reason": rewritten.get("rewrite_reason", ""),
                 })
 
-                # 更新内容
+                # 更新内容（保留 SEO 关键词）
+                rewritten["seo_keywords"] = content.get("seo_keywords", [])
                 content = rewritten
                 rewrite_reason = rewritten.get("rewrite_reason", "")
                 score = new_score

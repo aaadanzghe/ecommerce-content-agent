@@ -6,27 +6,30 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "电商文案微调 - 本地训练 (RTX 5070 Ti 12GB)" -ForegroundColor Cyan
+Write-Host "电商内容 Agent - 本地训练 (RTX 5070 Ti 12GB)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # 1. 检查 LLaMA-Factory
 if (-not (Test-Path "LLaMA-Factory")) {
-    Write-Host "错误: 未找到 LLaMA-Factory，请先运行 scripts/setup_env.ps1" -ForegroundColor Red
+    Write-Host "错误: 未找到 LLaMA-Factory，请先运行 .\scripts\setup_env.ps1" -ForegroundColor Red
     exit 1
 }
 
 # 2. 检查模型
-$modelPath = "models/qwen3-14b"
+$modelPath = "models/Qwen3-14B-Instruct"
 if (-not (Test-Path $modelPath)) {
     Write-Host "警告: 未找到本地模型 $modelPath" -ForegroundColor Yellow
-    Write-Host "  尝试从 HuggingFace 下载 Qwen2.5-14B-Instruct..." -ForegroundColor Yellow
-    Write-Host "  或手动下载: python scripts/download_model.py --model qwen3-14b" -ForegroundColor Yellow
-    $modelPath = "Qwen/Qwen2.5-14B-Instruct"
+    Write-Host "  尝试从 HuggingFace 下载..." -ForegroundColor Yellow
+    python scripts\download_model.py --model qwen3-14b
+    if (-not (Test-Path $modelPath)) {
+        Write-Host "错误: 模型下载失败" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # 3. 检查数据集
 if (-not (Test-Path "data/labeled/train.json")) {
-    Write-Host "错误: 未找到训练数据，请先运行 python data/preprocess.py" -ForegroundColor Red
+    Write-Host "错误: 未找到训练数据，请先运行 python data\preprocess.py" -ForegroundColor Red
     exit 1
 }
 
@@ -74,5 +77,6 @@ Write-Host "  LoRA Adapter: output/ecommerce_qlora_sft/"
 Write-Host "  训练日志: output/ecommerce_qlora_sft/trainer_log.jsonl"
 Write-Host ""
 Write-Host "下一步:" -ForegroundColor Yellow
-Write-Host "  1. 评估模型: python eval/judge.py --model $modelPath --lora output/ecommerce_qlora_sft"
-Write-Host "  2. 启动推理: python inference/vllm_serve.py --model $modelPath --lora output/ecommerce_qlora_sft"
+Write-Host "  1. 评估: python src\evaluation\judge.py --model $modelPath --lora output\ecommerce_qlora_sft"
+Write-Host "  2. 启动 vLLM: .\scripts\serve.ps1"
+Write-Host "  3. 启动 API: .\scripts\serve_api.ps1"

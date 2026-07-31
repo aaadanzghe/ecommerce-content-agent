@@ -13,6 +13,7 @@
 - **多平台适配**：淘宝、Amazon、抖音、小红书 四种平台风格
 - **四维质量评估**：LLM-as-Judge（准确性/吸引力/合规性/SEO）+ ROUGE-L + 确定性指标
 - **三路对比**：base model vs fine-tuned vs fine-tuned+rewrite，量化微调和重写的价值
+- **容器化部署**：Docker / Docker Compose 一键启动
 
 ## 架构
 
@@ -80,9 +81,17 @@ ecommerce-copywriter-llm/
 │   ├── train_config.yaml
 │   └── grpo_config.yaml
 ├── scripts/                        # 环境搭建/模型下载/训练脚本
+│   ├── setup_env.ps1
+│   ├── download_model.py
+│   ├── train_local.ps1
+│   ├── serve.ps1
+│   ├── serve_api.ps1
+│   └── compare_models.py           # 三路对比评估
 ├── examples/
 │   └── sample_products.json        # 示例商品
 ├── quick_start.py                  # 快速启动（Mock 模式，无需 GPU）
+├── Dockerfile                      # Docker 构建
+├── docker-compose.yml              # Docker Compose 编排
 ├── README.md
 └── LICENSE
 ```
@@ -95,9 +104,47 @@ ecommerce-copywriter-llm/
 python quick_start.py
 ```
 
-使用 Mock 模型客户端，演示完整的生成→评分→重写流程。
+使用 Mock 模型客户端，演示完整的生成→评分→重写流程。示例输出：
 
-### 2. 启动 API 服务
+```
+[1/6] 商品理解...
+  卖点: ['主动降噪技术', '30小时超长续航', ...]
+  目标人群: 18-35岁都市白领、通勤族、运动爱好者
+
+[2/6] 文案生成...
+  标题: 【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水
+  卖点数: 5
+
+[3/6] SEO 关键词...
+  关键词: ['降噪耳机', '真无线蓝牙耳机', ...]
+
+[4/6] 合规检查...
+  合规: 通过
+
+[5/6] 质量评分...
+  准确性: 4/5
+  吸引力: 4/5
+  合规性: 5/5
+  SEO: 3/5
+  总分: 4.05/5 (通过)
+
+[6/6] 质量达标，无需重写
+```
+
+### 2. Docker 部署
+
+```bash
+# 构建镜像
+docker build -t ecommerce-agent .
+
+# 启动 API 服务 (Mock 模式，无需模型)
+docker run -p 8888:8888 ecommerce-agent
+
+# 或使用 Docker Compose
+docker-compose up -d
+```
+
+### 3. 启动 API 服务（本地开发）
 
 ```powershell
 # Mock 模式
@@ -109,15 +156,24 @@ $env:API_BASE="http://localhost:8000/v1"
 python -m uvicorn src.api.server:app --port 8888
 ```
 
-调用示例：
+API 调用示例：
 
 ```bash
+# 生成文案
 curl -X POST http://localhost:8888/generate \
   -H "Content-Type: application/json" \
-  -d '{"title": "无线蓝牙耳机", "category": "3c_digital", "platform": "taobao"}'
+  -d '{
+    "title": "无线蓝牙耳机",
+    "category": "3c_digital",
+    "platform": "taobao",
+    "attributes": {"蓝牙版本": "5.3", "续航": "30小时"}
+  }'
+
+# 健康检查
+curl http://localhost:8888/health
 ```
 
-### 3. 数据工程
+### 4. 数据工程
 
 ```powershell
 # 下载数据集
@@ -127,7 +183,7 @@ python data/download_datasets.py
 python data/preprocess.py
 ```
 
-### 4. 模型微调
+### 5. 模型微调
 
 ```powershell
 # 安装环境
@@ -140,10 +196,17 @@ python scripts\download_model.py --model qwen3-14b
 .\scripts\train_local.ps1
 ```
 
-### 5. 三路对比评估
+### 6. 三路对比评估
 
 ```powershell
-python -m src.evaluation.judge --test_file data/labeled/test.json --max_samples 50
+# Mock 模式（验证流程）
+python scripts/compare_models.py --mock
+
+# 真实模型对比（需要 GPU）
+python scripts/compare_models.py \
+  --base models/Qwen3-14B-Instruct \
+  --lora output/ecommerce_qlora_sft \
+  --test data/labeled/test.json
 ```
 
 ## 数据工程
@@ -158,6 +221,40 @@ python -m src.evaluation.judge --test_file data/labeled/test.json --max_samples 
 | 天池商品描述 | 阿里云天池 | 212 万条 | 18,000 条（9 品类均衡） |
 
 最终数据集：19,885 条，9 品类均衡，Alpaca 格式，8:1:1 划分。
+
+### 数据结构
+
+**输入 (ProductProfile)**：
+```json
+{
+  "title": "商品标题",
+  "category": "3c_digital",
+  "attributes": {"蓝牙版本": "5.3", "续航": "30小时"},
+  "selling_points": [],
+  "target_audience": "",
+  "platform": "taobao",
+  "tone": "professional"
+}
+```
+
+**输出 (ContentPackage)**：
+```json
+{
+  "optimized_title": "优化后的标题",
+  "selling_points": ["卖点1", "卖点2", ...],
+  "description": "详情页文案",
+  "seo_keywords": ["关键词1", ...],
+  "social_copy": "社媒推广文案",
+  "quality_score": {
+    "accuracy": {"score": 4, "reason": "..."},
+    "attractiveness": {"score": 4, "reason": "..."},
+    "compliance": {"score": 5, "reason": "..."},
+    "seo": {"score": 3, "reason": "..."},
+    "total": 4.05,
+    "passed": true
+  }
+}
+```
 
 ## 模型与训练
 
@@ -178,6 +275,30 @@ python -m src.evaluation.judge --test_file data/labeled/test.json --max_samples 
 | 学习率 | 2e-4 (cosine) |
 | batch size | 4 × 4 (有效 16) |
 | epochs | 3 |
+
+### 模型切换
+
+通过统一接口切换后端，无需修改 Agent 代码：
+
+```python
+from src.inference.model_client import create_client, ModelConfig
+
+# Mock 模式（开发测试）
+client = create_client(ModelConfig(backend="mock"))
+
+# Transformers + LoRA（本地推理）
+client = create_client(ModelConfig(
+    backend="transformers",
+    model_path="models/Qwen3-14B-Instruct",
+    lora_path="output/ecommerce_qlora_sft"
+))
+
+# vLLM 服务（高性能推理）
+client = create_client(ModelConfig(
+    backend="vllm",
+    api_base="http://localhost:8000/v1"
+))
+```
 
 ## 评估体系
 
@@ -208,15 +329,16 @@ python -m src.evaluation.judge --test_file data/labeled/test.json --max_samples 
 | 评估 | LLM-as-Judge + ROUGE-L |
 | 推理引擎 | vLLM |
 | API 服务 | FastAPI |
+| 容器化 | Docker + Docker Compose |
 | 基座模型 | Qwen3-14B / Qwen3.5-35B-A3B MoE |
 
 ## 迭代计划
 
 | 阶段 | 目标 | 状态 |
 |------|------|------|
-| Iteration 0 | 项目整理与范围收敛 | ✅ 完成 |
-| Iteration 1 | 文案生成 Agent MVP | ✅ 完成 |
-| Iteration 2 | 接入微调模型 + 三路对比 | ⏳ 待训练 |
+| Iteration 0 | 项目整理与范围收敛 | 完成 |
+| Iteration 1 | 文案生成 Agent MVP | 完成 |
+| Iteration 2 | 接入微调模型 + 三路对比 | 待训练 |
 | Iteration 3 | Listing 优化 Agent | 规划中 |
 | Iteration 4 | 图片创意 Agent | 规划中 |
 | Iteration 5 | 短视频脚本 Agent | 规划中 |

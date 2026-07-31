@@ -1,5 +1,5 @@
 # ============================================================
-# 电商文案微调 - 一键环境安装脚本
+# 电商内容 Agent - 一键环境安装脚本
 # 适配: Windows + RTX 5070 Ti 12GB
 # 用法: 右键 "使用 PowerShell 运行" 或在终端执行 .\scripts\setup_env.ps1
 # ============================================================
@@ -7,7 +7,7 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "电商文案微调 - 环境安装" -ForegroundColor Cyan
+Write-Host "电商内容 Agent - 环境安装" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # 1. 检查 Python 环境
@@ -35,6 +35,7 @@ if ($cudaAvailable -eq "True") {
 # 3. 安装核心依赖
 Write-Host "`n[3/5] 安装核心依赖 (pip)..." -ForegroundColor Yellow
 $pipPackages = @(
+    # === 模型训练 ===
     "torch>=2.1.0",
     "transformers>=4.45.0",
     "datasets>=2.14.0",
@@ -42,10 +43,16 @@ $pipPackages = @(
     "peft>=0.10.0",
     "trl>=0.8.0",
     "bitsandbytes>=0.43.0",
-    "vllm>=0.5.0",
     "xformers>=0.0.23",
     "sentencepiece>=0.1.99",
     "protobuf>=3.20.0",
+    # === Agent 服务 ===
+    "vllm>=0.5.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "openai>=1.30.0",
+    "pydantic>=2.6.0",
+    # === 评估与数据处理 ===
     "scipy>=1.10.0",
     "jieba>=0.42.1",
     "scikit-learn>=1.3.0",
@@ -53,6 +60,8 @@ $pipPackages = @(
     "seaborn>=0.12.0",
     "pandas>=2.0.0",
     "tqdm>=4.66.0",
+    "numpy>=1.24.0",
+    # === 日志与可视化 ===
     "wandb>=0.15.0",
     "tensorboard>=2.14.0",
     "safetensors>=0.4.0",
@@ -86,12 +95,16 @@ import transformers
 import peft
 import bitsandbytes
 import datasets
+import fastapi
+import uvicorn
+import openai
 
 print(f'  PyTorch: {torch.__version__}')
 print(f'  Transformers: {transformers.__version__}')
 print(f'  PEFT: {peft.__version__}')
 print(f'  bitsandbytes: {bitsandbytes.__version__}')
 print(f'  Datasets: {datasets.__version__}')
+print(f'  FastAPI: {fastapi.__version__}')
 print(f'  CUDA Available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
@@ -104,7 +117,8 @@ Write-Host "环境安装完成！" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "下一步：" -ForegroundColor Yellow
-Write-Host "  1. 下载模型: python scripts/download_model.py"
-Write-Host "  2. 开始训练: cd LLaMA-Factory && python src/train.py ../configs/train_config.yaml"
-Write-Host "  3. 本地推理: python inference/vllm_serve.py"
-Write-Host "  4. 云端 GRPO: cd LLaMA-Factory && python src/train.py ../configs/grpo_config.yaml"
+Write-Host "  1. 验证 Agent 闭环: python quick_start.py"
+Write-Host "  2. 下载模型: python scripts/download_model.py --model qwen3-14b"
+Write-Host "  3. 开始训练: .\scripts\train_local.ps1"
+Write-Host "  4. 启动推理: .\scripts\serve.ps1"
+Write-Host "  5. 启动 API: .\scripts\serve_api.ps1"

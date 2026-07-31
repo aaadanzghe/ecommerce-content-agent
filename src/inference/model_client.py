@@ -187,19 +187,75 @@ class MockModelClient(ModelClient):
     """Mock 模型客户端 — 用于无 GPU 环境下的流程验证"""
 
     def chat(self, user_message: str, system_prompt: str = "") -> str:
-        # 简单的规则模拟
-        if "标题" in user_message or "title" in user_message.lower():
-            return "【品质之选】高性价比好物推荐"
-        if "卖点" in user_message or "selling" in user_message.lower():
-            return "1. 品质保障\n2. 性价比高\n3. 用户好评\n4. 售后无忧\n5. 快速发货"
-        if "SEO" in user_message or "关键词" in user_message:
-            return "高品质, 性价比, 热销, 正品, 快速发货"
-        if "评分" in user_message or "score" in user_message.lower():
+        system = system_prompt.lower() if system_prompt else ""
+        user = user_message.lower() if user_message else ""
+
+        # 1. 商品理解 Agent (优先匹配，避免与其他重叠)
+        if "商品分析专家" in system or "提炼卖点" in system:
             return json.dumps({
-                "accuracy": {"score": 4, "reason": "信息基本准确"},
-                "attractiveness": {"score": 3, "reason": "吸引力一般"},
-                "compliance": {"score": 5, "reason": "无违规内容"},
-                "seo": {"score": 3, "reason": "关键词覆盖不足"},
-                "overall_comment": "基本合格，SEO 需加强"
+                "selling_points": ["主动降噪技术", "30小时超长续航", "IPX5防水防汗", "13mm大动圈音质", "蓝牙5.3低延迟"],
+                "target_audience": "18-35岁都市白领、通勤族、运动爱好者",
+                "use_scenes": ["通勤地铁", "健身房运动", "办公室专注"],
+                "price_positioning": "mid"
             }, ensure_ascii=False)
+
+        # 2. 文案生成 Agent
+        if "文案撰写师" in system or "optimized_title" in user:
+            return json.dumps({
+                "optimized_title": "【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水",
+                "selling_points": [
+                    "ANC主动降噪，沉浸式聆听体验",
+                    "30小时复合续航，一周一充无忧",
+                    "IPX5级防水防汗，运动健身不受限",
+                    "13mm生物振膜动圈，HiFi级音质表现",
+                    "蓝牙5.3技术，游戏低延迟不断连"
+                ],
+                "description": "XX品牌 TWS Pro 真无线降噪耳机，采用全新ANC主动降噪技术，有效隔绝环境噪音。搭载13mm大动圈单元，三频均衡，低音浑厚有力。30小时超长续航，支持快充，充电10分钟听歌2小时。IPX5防水防汗设计，运动通勤两不误。蓝牙5.3芯片，延迟低至45ms，游戏影音同步更精准。人体工学入耳设计，久戴不痛，多尺寸耳塞适配不同耳型。",
+                "social_copy": "通勤路上太吵？健身房里总被打断？这款TWS Pro降噪耳机真的拯救了我！ANC主动降噪一戴就静，30小时续航一周充一次就够了。IPX5防水运动出汗也不怕，音质完全超出这个价位的预期！#降噪耳机 #TWS #数码好物"
+            }, ensure_ascii=False)
+
+        # 3. SEO Agent
+        if "seo 专家" in system or "搜索关键词" in system:
+            return json.dumps({
+                "seo_keywords": ["降噪耳机", "真无线蓝牙耳机", "TWS耳机", "主动降噪", "长续航耳机", "运动耳机", "蓝牙5.3"],
+                "long_tail_keywords": ["降噪耳机 运动防水", "真无线耳机 30小时续航", "ANC耳机 低延迟"],
+                "category_keywords": ["数码配件", "音频设备"]
+            }, ensure_ascii=False)
+
+        # 4. 重写 Rewrite Agent (必须在 Compliance 之前，因为 system prompt 包含"优化")
+        if "文案优化专家" in system or "rewrite_reason" in user:
+            return json.dumps({
+                "optimized_title": "【ANC降噪】TWS Pro真无线耳机 30h续航 IPX5防水 游戏低延迟",
+                "selling_points": [
+                    "ANC主动降噪，-35dB深度降噪",
+                    "30小时复合续航，Type-C快充",
+                    "IPX5防水防汗，运动场景全覆盖",
+                    "13mm生物振膜，Hi-Res高清音质",
+                    "蓝牙5.3+45ms低延迟，电竞级体验"
+                ],
+                "description": "XX品牌 TWS Pro 真无线降噪耳机，搭载ANC主动降噪芯片，降噪深度达35dB。13mm生物振膜动圈单元，高频通透、中频人声饱满、低频下潜深。30小时复合续航，支持Type-C快充，充电10分钟畅听2小时。IPX5专业防水防汗，跑步健身全程陪伴。蓝牙5.3协议，游戏模式延迟仅45ms。附赠3组不同尺寸硅胶耳塞，佩戴稳固舒适。",
+                "social_copy": "终于找到通勤+运动都能用的降噪耳机了！ANC一开整个世界都安静了，30小时续航我一周只充一次。健身房暴汗也不慌，IPX5防水不是盖的。打游戏延迟低到感受不到，这价格真的香！#降噪耳机推荐 #TWS #运动耳机",
+                "rewrite_reason": "优化SEO关键词密度，增强卖点数据化表达，补充Type-C快充细节"
+            }, ensure_ascii=False)
+
+        # 5. 评分 Judge Agent
+        if "质量评估专家" in system or "维度打分" in system:
+            return json.dumps({
+                "accuracy": {"score": 4, "reason": "产品属性准确，无虚构信息"},
+                "attractiveness": {"score": 4, "reason": "卖点突出，描述有吸引力"},
+                "compliance": {"score": 5, "reason": "无广告法违禁词"},
+                "seo": {"score": 3, "reason": "关键词覆盖尚可，长尾词可加强"},
+                "overall_comment": "整体质量良好，SEO维度有提升空间"
+            }, ensure_ascii=False)
+
+        # 6. 合规检查 Agent (放在最后，条件较宽泛)
+        if "合规审核专家" in system or ("审核" in system and "优化" not in system):
+            return json.dumps({
+                "is_compliant": True,
+                "violations": [],
+                "risk_level": "low",
+                "summary": "文案合规，无违规内容"
+            }, ensure_ascii=False)
+
+        # 默认文案
         return "这是一段模拟生成的电商文案。品质保证，值得信赖。"

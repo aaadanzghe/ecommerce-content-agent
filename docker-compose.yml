@@ -1,0 +1,101 @@
+# ============================================================
+# 电商内容 Agent - Docker Compose
+# 用法:
+#   docker-compose up -d        # 启动服务
+#   docker-compose down         # 停止服务
+#   docker-compose up --build   # 重新构建并启动
+# ============================================================
+
+version: "3.8"
+
+services:
+  # ----------------------------------------------------------
+  # API 服务 (FastAPI)
+  # ----------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-agent:latest
+    container_name: ecommerce-agent-api
+    ports:
+      - "8888:8888"
+    environment:
+      - MODEL_BACKEND=mock
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # 模型目录 (可选，挂载本地模型)
+      - ./models:/app/models:ro
+      # 输出目录
+      - ./output:/app/output
+      # 数据目录
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------
+  # vLLM 推理服务 (可选，需要 GPU)
+  # ----------------------------------------------------------
+  vllm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-agent:latest
+    container_name: ecommerce-agent-vllm
+    profiles: ["vllm"]  # 默认不启动，使用 docker-compose --profile vllm up -d
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./output:/app/output
+    command: >
+      python3 -m vllm.entrypoints.openai.api_server
+      --model /app/models/Qwen3-14B-Instruct
+      --port 8000
+      --host 0.0.0.0
+      --dtype bfloat16
+      --max-model-len 4096
+      --enable-lora
+      --lora-modules ecommerce-lora=/app/output/ecommerce_qlora_sft
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # API + vLLM 联合模式 (API 指向 vLLM 服务)
+  # ----------------------------------------------------------
+  api-with-vllm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-agent:latest
+    container_name: ecommerce-agent-api-vllm
+    profiles: ["full"]
+    ports:
+      - "8888:8888"
+    environment:
+      - MODEL_BACKEND=vllm
+      - API_BASE=http://vllm:8000/v1
+      - PYTHONPATH=/app
+    depends_on:
+      - vllm
+    volumes:
+      - ./models:/app/models:ro
+      - ./output:/app/output
+      - ./data:/app/data:ro
+    restart: unless-stopped

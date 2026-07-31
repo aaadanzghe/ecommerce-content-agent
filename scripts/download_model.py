@@ -1,108 +1,98 @@
 # -*- coding: utf-8 -*-
 """
 模型下载脚本
-支持 HuggingFace / ModelScope 镜像下载
+支持从 HuggingFace / ModelScope 下载模型
+
+用法:
+    python scripts/download_model.py --model qwen3-14b
+    python scripts/download_model.py --model qwen3-moe
 """
 
-import argparse
 import os
+import sys
+import argparse
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent
-MODEL_DIR = PROJECT_DIR / "models"
-MODEL_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR = PROJECT_DIR / "models"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-# 模型配置
-MODELS = {
+MODEL_REGISTRY = {
     "qwen3-14b": {
-        "hf_id": "Qwen/Qwen2.5-14B-Instruct",
-        "ms_id": "qwen/Qwen2.5-14B-Instruct",
-        "size_gb": 28,
-        "description": "本地开发用 (5070 Ti 12GB)"
+        "hf": "Qwen/Qwen3-14B-Instruct",
+        "ms": "qwen/Qwen3-14B-Instruct",
+        "desc": "Qwen3-14B Dense (本地训练)",
     },
     "qwen3-moe": {
-        "hf_id": "Qwen/Qwen3.5-35B-A3B-Instruct",
-        "ms_id": "qwen/Qwen3.5-35B-A3B-Instruct",
-        "size_gb": 70,
-        "description": "云端部署用 (A100 40GB+)"
+        "hf": "Qwen/Qwen3.5-35B-A3B-Instruct",
+        "ms": "qwen/Qwen3.5-35B-A3B-Instruct",
+        "desc": "Qwen3.5-35B-A3B MoE (云端训练)",
     },
-    "qwen3-8b": {
-        "hf_id": "Qwen/Qwen2.5-7B-Instruct",
-        "ms_id": "qwen/Qwen2.5-7B-Instruct",
-        "size_gb": 16,
-        "description": "轻量替代 (显存充裕)"
-    }
 }
 
 
-def download_from_hf(model_id: str, local_dir: str, mirror: str = None):
+def download_from_hf(model_id: str, output_dir: Path):
     """从 HuggingFace 下载"""
     from huggingface_hub import snapshot_download
-    
     print(f"从 HuggingFace 下载: {model_id}")
-    if mirror:
-        os.environ["HF_ENDPOINT"] = mirror
-    
     snapshot_download(
         repo_id=model_id,
-        local_dir=local_dir,
+        local_dir=str(output_dir),
         local_dir_use_symlinks=False,
         resume_download=True,
-        max_workers=4
     )
-    print(f"下载完成: {local_dir}")
+    print(f"下载完成: {output_dir}")
 
 
-def download_from_modelscope(model_id: str, local_dir: str):
+def download_from_modelscope(model_id: str, output_dir: Path):
     """从 ModelScope 下载"""
     from modelscope import snapshot_download
-    
     print(f"从 ModelScope 下载: {model_id}")
     snapshot_download(
-        model_id=model_id,
-        local_dir=local_dir,
-        revision="master"
+        model_id,
+        cache_dir=str(output_dir.parent),
     )
-    print(f"下载完成: {local_dir}")
+    print(f"下载完成: {output_dir}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="模型下载脚本")
-    parser.add_argument("--model", type=str, default="qwen3-14b",
-                        choices=list(MODELS.keys()),
-                        help="要下载的模型")
-    parser.add_argument("--source", type=str, default="modelscope",
-                        choices=["huggingface", "modelscope", "hf-mirror"],
-                        help="下载源 (modelscope 国内更快)")
+    parser = argparse.ArgumentParser(description="下载预训练模型")
+    parser.add_argument("--model", type=str, required=True,
+                        help="模型名称: qwen3-14b | qwen3-moe")
+    parser.add_argument("--source", type=str, default="hf",
+                        choices=["hf", "modelscope"],
+                        help="下载源")
     parser.add_argument("--output", type=str, default=None,
-                        help="输出目录 (默认: models/<model_name>)")
-    
+                        help="输出目录（默认 models/{model}）")
+
     args = parser.parse_args()
-    
-    model_info = MODELS[args.model]
-    output_dir = args.output or str(MODEL_DIR / args.model)
-    
+
+    if args.model not in MODEL_REGISTRY:
+        print(f"错误: 不支持的模型 '{args.model}'")
+        print(f"支持的模型: {', '.join(MODEL_REGISTRY.keys())}")
+        sys.exit(1)
+
+    info = MODEL_REGISTRY[args.model]
+    output_dir = Path(args.output) if args.output else MODELS_DIR / info["hf"].split("/")[-1]
+
+    if output_dir.exists() and any(output_dir.iterdir()):
+        print(f"模型已存在于: {output_dir}")
+        print("如需重新下载，请先删除该目录")
+        return
+
     print("=" * 60)
-    print(f"下载模型: {args.model}")
-    print(f"描述: {model_info['description']}")
-    print(f"大小: ~{model_info['size_gb']} GB")
+    print(f"模型: {info['desc']}")
+    print(f"ID: {info['hf']}")
     print(f"输出: {output_dir}")
     print("=" * 60)
-    
-    # 检查磁盘空间
-    import shutil
-    free_gb = shutil.disk_usage(output_dir).free / 1024**3
-    if free_gb < model_info['size_gb'] * 1.2:
-        print(f"警告: 磁盘空间不足! 需要 ~{model_info['size_gb']*1.2:.0f} GB, 可用 {free_gb:.0f} GB")
-        return
-    
-    # 下载
-    if args.source == "modelscope":
-        download_from_modelscope(model_info["ms_id"], output_dir)
-    elif args.source == "hf-mirror":
-        download_from_hf(model_info["hf_id"], output_dir, mirror="https://hf-mirror.com")
+
+    if args.source == "hf":
+        download_from_hf(info["hf"], output_dir)
     else:
-        download_from_hf(model_info["hf_id"], output_dir)
+        download_from_modelscope(info["ms"], output_dir)
+
+    print("\n下载完成！")
+    print(f"模型路径: {output_dir}")
 
 
 if __name__ == "__main__":

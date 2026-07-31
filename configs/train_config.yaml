@@ -5,13 +5,13 @@
 # ============================================================
 
 ### 模型配置
-model_name_or_path: "Qwen/Qwen2.5-14B-Instruct"  # 替换为 Qwen3-14B 路径
+model_name_or_path: "models/Qwen3-14B-Instruct"
 template: qwen
 trust_remote_code: true
 
 ### 数据集
 dataset: ecommerce_copywriting
-val_size: 0.0  # 已预划分，使用独立验证集
+val_size: 0.0
 eval_dataset: ecommerce_copywriting_val
 cutoff_len: 1024
 preprocessing_num_workers: 4
@@ -36,7 +36,7 @@ lora_rank: 64
 lora_alpha: 128
 lora_target: "all"
 lora_dropout: 0.05
-loraplus_lr_ratio: 16.0  # LoRA+ 优化
+loraplus_lr_ratio: 16.0
 
 ### 训练超参数
 finetuning_type: lora
@@ -44,9 +44,9 @@ learning_rate: 2.0e-4
 lr_scheduler_type: cosine
 warmup_ratio: 0.05
 num_train_epochs: 3.0
-per_device_train_batch_size: 4       # 5070 Ti 12GB 刚好
+per_device_train_batch_size: 4
 per_device_eval_batch_size: 4
-gradient_accumulation_steps: 4       # 有效 batch_size = 4*4 = 16
+gradient_accumulation_steps: 4
 max_grad_norm: 1.0
 optim: adamw_8bit
 weight_decay: 0.01
@@ -55,14 +55,10 @@ weight_decay: 0.01
 fp16: false
 bf16: true
 
-### DeepSpeed (可选，显存不够时开启)
-# deepspeed: configs/ds_zero2.json
-
 ### 评估
 do_eval: true
 evaluation_strategy: steps
 eval_steps: 200
-per_device_eval_batch_size: 4
 predict_with_generate: true
 generation_max_length: 512
 generation_num_beams: 1
