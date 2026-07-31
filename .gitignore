@@ -5,9 +5,14 @@
 # === 原始数据集（太大，不传 GitHub）===
 data/raw/tianchi/
 data/raw/AdvertiseGen/
+data/raw/*.json
 *.zip
 *.tar.gz
 *.tar
+
+# === 处理后数据集（体积大，通过 preprocess.py 生成）===
+data/labeled/train.json
+data/labeled/val.json
 
 # === 旧模拟数据脚本（已废弃）===
 data/generate_simulated.py
@@ -35,10 +40,12 @@ logs/
 # === LLaMA-Factory（clone 的外部仓库）===
 LLaMA-Factory/
 
-# === 面试准备文档（不公开）===
+# === 个人准备文档（不公开）===
 面试文档-润色版/
 面试文档/
 02-岗位分析.md
+00-项目方案.md
+01-架构设计.md
 
 # === Python ===
 __pycache__/

@@ -1,0 +1,43 @@
+[
+  {
+    "title": "XX品牌 TWS Pro 真无线降噪耳机",
+    "category": "3c_digital",
+    "attributes": {
+      "蓝牙版本": "5.3",
+      "降噪类型": "主动降噪ANC",
+      "续航时间": "30小时（含充电仓）",
+      "防水等级": "IPX5",
+      "驱动单元": "13mm动圈"
+    },
+    "selling_points": [],
+    "target_audience": "",
+    "price_positioning": "mid",
+    "platform": "taobao",
+    "tone": "trendy",
+    "constraints": ["不能虚构认证", "不能出现绝对化宣传"]
+  },
+  {
+    "title": "某品牌玻尿酸保湿精华液 30ml",
+    "category": "beauty",
+    "attributes": {
+      "容量": "30ml",
+      "主要成分": "玻尿酸、烟酰胺",
+      "功效": "保湿、提亮",
+      "适用肤质": "所有肤质"
+    },
+    "platform": "xiaohongshu",
+    "tone": "casual"
+  },
+  {
+    "title": "Smart Wireless Earbuds Pro with Active Noise Cancellation",
+    "category": "3c_digital",
+    "attributes": {
+      "Bluetooth": "5.3",
+      "Battery": "30 hours with case",
+      "Noise Cancellation": "ANC",
+      "Water Resistance": "IPX5"
+    },
+    "platform": "amazon",
+    "tone": "professional"
+  }
+]
