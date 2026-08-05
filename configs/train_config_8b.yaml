@@ -1,0 +1,66 @@
+# ============================================================
+# 电商文案生成 - Qwen3-8B QLoRA SFT 训练配置
+# 目标: 在 RTX 5070 Ti Laptop 12GB 上避开 14B Windows 权重加载崩溃
+# 框架: LLaMA-Factory
+# ============================================================
+
+### 模型
+model_name_or_path: "../models/Qwen3-8B"
+trust_remote_code: true
+quantization_method: bnb
+quantization_bit: 4
+quantization_type: nf4
+double_quantization: true
+
+### 训练方法
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 64
+lora_alpha: 128
+lora_target: all
+lora_dropout: 0.05
+loraplus_lr_ratio: 16.0
+
+### 数据集
+dataset_dir: "../data"
+dataset: ecommerce_copywriting
+# eval_dataset: ecommerce_copywriting_val  # disabled: eval bottleneck
+template: qwen3
+cutoff_len: 768
+preprocessing_num_workers: 4
+overwrite_cache: true
+
+### 输出
+output_dir: "../output/ecommerce_qlora_sft_8b"
+logging_steps: 10
+save_steps: 200
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none
+
+### 训练超参数
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+max_grad_norm: 1.0
+optim: adamw_8bit
+weight_decay: 0.01
+bf16: true
+fp16: false
+ddp_timeout: 180000000
+
+### 评估
+do_eval: false
+# eval disabled to avoid generation bottleneck; use compare_models.py for post-training eval
+# eval_strategy: steps
+# eval_steps: 200
+# predict_with_generate: true
+# generation_max_length: 512
+# generation_num_beams: 1

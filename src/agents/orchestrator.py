@@ -38,7 +38,7 @@ class ContentOrchestrator:
         self.model = model_client or get_mock_client()
         self.max_rewrite_rounds = max_rewrite_rounds
 
-        # 初始化各 Agent
+        # 初始化各智能体
         self.understanding_agent = ProductUnderstandingAgent(self.model)
         self.copywriting_agent = CopywritingAgent(self.model)
         self.seo_agent = SEOAgent(self.model)
@@ -63,10 +63,10 @@ class ContentOrchestrator:
         print(f"开始生成文案: {product.title}")
         print(f"{'='*60}")
 
-        # Step 1: 商品理解
+        # 第 1 步：商品理解
         print("\n[1/6] 商品理解...")
         understanding = self.understanding_agent.run(product)
-        # 更新 product（补全卖点等）
+        # 更新商品信息（补全卖点等）
         if understanding["selling_points"]:
             product.selling_points = understanding["selling_points"]
         if understanding["target_audience"]:
@@ -76,19 +76,19 @@ class ContentOrchestrator:
         print(f"  卖点: {product.selling_points}")
         print(f"  目标人群: {product.target_audience}")
 
-        # Step 2: 文案生成
+        # 第 2 步：文案生成
         print("\n[2/6] 文案生成...")
         content = self.copywriting_agent.run(product)
         print(f"  标题: {content['optimized_title']}")
         print(f"  卖点数: {len(content['selling_points'])}")
 
-        # Step 3: SEO 关键词
+        # 第 3 步：SEO 关键词
         print("\n[3/6] SEO 关键词...")
         seo_result = self.seo_agent.run(product)
         content["seo_keywords"] = seo_result.get("seo_keywords", [])
         print(f"  关键词: {content['seo_keywords']}")
 
-        # Step 4: 合规检查
+        # 第 4 步：合规检查
         print("\n[4/6] 合规检查...")
         full_text = f"{content['optimized_title']} {' '.join(content['selling_points'])} {content['description']} {content['social_copy']}"
         compliance = self.compliance_agent.run(product, content=full_text)
@@ -96,7 +96,7 @@ class ContentOrchestrator:
         if compliance["violations"]:
             print(f"  问题: {compliance['violations']}")
 
-        # Step 5: 质量评分
+        # 第 5 步：质量评分
         print("\n[5/6] 质量评分...")
         score = self.judge_agent.run(product, content)
         print(f"  准确性: {score.accuracy.score}/5")
@@ -105,7 +105,7 @@ class ContentOrchestrator:
         print(f"  SEO: {score.seo.score}/5")
         print(f"  总分: {score.total}/5 ({'通过' if score.passed else '未通过'})")
 
-        # Step 6: 低分重写
+        # 第 6 步：低分重写
         rewrite_history = []
         rewrite_reason = ""
 

@@ -23,7 +23,7 @@ def download_advertise_gen_modelscope():
     print("尝试从 ModelScope 下载 AdvertiseGen 数据集...")
     print("=" * 60)
 
-    # Step 1: 获取文件列表
+    # 第 1 步：获取文件列表
     try:
         files_url = "https://modelscope.cn/api/v1/datasets/lvjianjin/AdvertiseGen/repo/files"
         req = urllib.request.Request(files_url, headers={"User-Agent": "Mozilla/5.0"})
@@ -37,7 +37,7 @@ def download_advertise_gen_modelscope():
             size = f.get("Size", 0)
             print(f"  {name} ({size} bytes)")
 
-        # Step 2: 下载数据文件
+        # 第 2 步：下载数据文件
         for f in files:
             name = f.get("Name", "")
             if name.endswith(".json") or name.endswith(".jsonl"):

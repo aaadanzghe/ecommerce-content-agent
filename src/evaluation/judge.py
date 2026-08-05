@@ -53,7 +53,7 @@ def evaluate_batch(
     for i, item in enumerate(test_data):
         print(f"  [{i+1}/{len(test_data)}] 评估中...")
 
-        # 从 Alpaca 格式构建 ProductProfile
+        # 从 Alpaca 格式构建商品信息
         input_data = json.loads(item.get("input", "{}"))
         product = ProductProfile(
             title=input_data.get("title", ""),
@@ -78,7 +78,7 @@ def evaluate_batch(
             "rouge": rouge,
         }
 
-        # LLM Judge（可选）
+        # 大语言模型评分（可选）
         if use_judge:
             score = judge_agent.run(product, content)
             result["judge_score"] = score.to_dict()
@@ -116,15 +116,15 @@ def three_way_compare(
     print("三路对比评估")
     print("=" * 60)
 
-    # 1. Base Model
+    # 1. 基座模型
     print("\n[1/3] 评估 Base Model...")
     base_results = evaluate_batch(base_client, test_data, max_samples, use_judge=True)
 
-    # 2. Fine-tuned Model
+    # 2. 微调模型
     print("\n[2/3] 评估 Fine-tuned Model...")
     ft_results = evaluate_batch(finetuned_client, test_data, max_samples, use_judge=True)
 
-    # 3. Fine-tuned + Rewrite
+    # 3. 微调模型加重写
     print("\n[3/3] 评估 Fine-tuned + Rewrite...")
     from src.agents.orchestrator import ContentOrchestrator
 
@@ -179,7 +179,7 @@ def three_way_compare(
 
 
 # ============================================================
-# CLI
+# 命令行入口
 # ============================================================
 if __name__ == "__main__":
     import argparse

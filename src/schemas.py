@@ -35,11 +35,11 @@ class ProductProfile:
     attributes: Dict[str, str] = field(default_factory=dict)
     selling_points: List[str] = field(default_factory=list)
     target_audience: str = ""
-    price_positioning: str = ""          # low / mid / high
+    price_positioning: str = ""          # 低 / 中 / 高
     platform: str = "taobao"
     tone: str = "professional"
     constraints: List[str] = field(default_factory=list)
-    # 可选：原始描述（Listing 优化时用）
+    # 可选：原始描述（商品详情页优化时使用）
     original_description: str = ""
 
     def to_prompt_dict(self) -> dict:

@@ -1,82 +1,161 @@
 # ============================================================
-# 本地训练启动脚本
-# 用法: .\scripts\train_local.ps1
+# Local training launcher
+# Usage:
+#   .\scripts\train_local.ps1
+#   .\scripts\train_local.ps1 -SmokeTest
+#   .\scripts\train_local.ps1 -ConfigPath configs\train_config.yaml -ModelPath models\Qwen3-14B
+# Environment: venv312 (Python 3.12 + PyTorch 2.11 + CUDA 12.8)
 # ============================================================
+
+param(
+    [string]$ConfigPath = "configs\train_config_8b.yaml",
+    [string]$ModelPath = "models\Qwen3-8B",
+    [switch]$SmokeTest
+)
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "电商内容 Agent - 本地训练 (RTX 5070 Ti 12GB)" -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
-
-# 1. 检查 LLaMA-Factory
-if (-not (Test-Path "LLaMA-Factory")) {
-    Write-Host "错误: 未找到 LLaMA-Factory，请先运行 .\scripts\setup_env.ps1" -ForegroundColor Red
+$python = "venv312\Scripts\python.exe"
+if (-not (Test-Path $python)) {
+    Write-Host "ERROR: venv312 was not found." -ForegroundColor Red
     exit 1
 }
 
-# 2. 检查模型
-$modelPath = "models/Qwen3-14B-Instruct"
-if (-not (Test-Path $modelPath)) {
-    Write-Host "警告: 未找到本地模型 $modelPath" -ForegroundColor Yellow
-    Write-Host "  尝试从 HuggingFace 下载..." -ForegroundColor Yellow
-    python scripts\download_model.py --model qwen3-14b
-    if (-not (Test-Path $modelPath)) {
-        Write-Host "错误: 模型下载失败" -ForegroundColor Red
-        exit 1
+if (-not (Test-Path $ConfigPath)) {
+    Write-Host "ERROR: training config was not found: $ConfigPath" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "Ecommerce Agent - local QLoRA training (RTX 5070 Ti 12GB)" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+
+if (-not (Test-Path "LLaMA-Factory")) {
+    Write-Host "ERROR: LLaMA-Factory was not found. Run .\scripts\setup_env.ps1 first." -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path $ModelPath)) {
+    Write-Host "ERROR: local model was not found: $ModelPath" -ForegroundColor Red
+    Write-Host "  Default 8B download: venv312\Scripts\python.exe scripts\download_model.py --model qwen3-8b --source modelscope" -ForegroundColor Yellow
+    exit 1
+}
+
+if (-not (Test-Path "data\labeled\train.json")) {
+    Write-Host "ERROR: training data was not found. Run venv312\Scripts\python.exe data\preprocess.py first." -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path "data\labeled\val.json")) {
+    Write-Host "ERROR: validation data was not found. Run venv312\Scripts\python.exe data\preprocess.py first." -ForegroundColor Red
+    exit 1
+}
+
+$trainCount = (& $python -c "import json; print(len(json.load(open('data/labeled/train.json', encoding='utf-8'))))")
+$valCount = (& $python -c "import json; print(len(json.load(open('data/labeled/val.json', encoding='utf-8'))))")
+Write-Host "Train samples: $trainCount" -ForegroundColor Green
+Write-Host "Validation samples: $valCount" -ForegroundColor Green
+
+New-Item -ItemType Directory -Path ".cache" -Force | Out-Null
+
+$configText = Get-Content $ConfigPath -Raw -Encoding UTF8
+if ([System.IO.Path]::IsPathRooted($ModelPath)) {
+    $modelPathForConfig = $ModelPath -replace "\\", "/"
+} else {
+    $modelPathForConfig = "../" + (($ModelPath -replace "\\", "/").TrimStart("./"))
+}
+
+$configText = [regex]::Replace($configText, "(?m)^model_name_or_path:.*$", "model_name_or_path: `"$modelPathForConfig`"")
+
+if ($SmokeTest) {
+    $configText = [regex]::Replace($configText, "(?m)^output_dir:.*$", "output_dir: `"../output/ecommerce_qlora_sft_8b_smoke`"")
+    if ($configText -match "(?m)^do_eval:") {
+        $configText = [regex]::Replace($configText, "(?m)^do_eval:.*$", "do_eval: false")
+    }
+    if ($configText -match "(?m)^eval_dataset:") {
+        $configText = [regex]::Replace($configText, "(?m)^eval_dataset:.*$", "# eval_dataset disabled for smoke test")
+    }
+    if ($configText -match "(?m)^eval_strategy:") {
+        $configText = [regex]::Replace($configText, "(?m)^eval_strategy:.*$", "eval_strategy: `"no`"")
+    }
+    if ($configText -match "(?m)^predict_with_generate:") {
+        $configText = [regex]::Replace($configText, "(?m)^predict_with_generate:.*$", "predict_with_generate: false")
+    }
+    if ($configText -match "(?m)^max_samples:") {
+        $configText = [regex]::Replace($configText, "(?m)^max_samples:.*$", "max_samples: 64")
+    } else {
+        $configText += "`nmax_samples: 64`n"
+    }
+    if ($configText -match "(?m)^max_steps:") {
+        $configText = [regex]::Replace($configText, "(?m)^max_steps:.*$", "max_steps: 5")
+    } else {
+        $configText += "`nmax_steps: 5`n"
+    }
+    if ($configText -match "(?m)^save_steps:") {
+        $configText = [regex]::Replace($configText, "(?m)^save_steps:.*$", "save_steps: 5")
+    }
+    if ($configText -match "(?m)^eval_steps:") {
+        $configText = [regex]::Replace($configText, "(?m)^eval_steps:.*$", "eval_steps: 5")
     }
 }
 
-# 3. 检查数据集
-if (-not (Test-Path "data/labeled/train.json")) {
-    Write-Host "错误: 未找到训练数据，请先运行 python data\preprocess.py" -ForegroundColor Red
-    exit 1
+$runtimeConfig = ".cache\train_config_runtime.yaml"
+Set-Content -Path $runtimeConfig -Value $configText -Encoding UTF8
+
+Write-Host ""
+Write-Host "Starting QLoRA SFT training..." -ForegroundColor Yellow
+Write-Host "  Model: $ModelPath"
+Write-Host "  Config: $ConfigPath"
+Write-Host "  Runtime config: $runtimeConfig"
+if ($SmokeTest) {
+    Write-Host "  Mode: smoke test (max_steps=5)"
+} else {
+    Write-Host "  Mode: full training"
 }
-
-$trainCount = (Get-Content "data/labeled/train.json" | ConvertFrom-Json).Count
-$valCount = (Get-Content "data/labeled/val.json" | ConvertFrom-Json).Count
-Write-Host "训练集: $trainCount 条" -ForegroundColor Green
-Write-Host "验证集: $valCount 条" -ForegroundColor Green
-
-# 4. 开始训练
-Write-Host "`n开始 QLoRA SFT 训练..." -ForegroundColor Yellow
-Write-Host "  模型: $modelPath"
-Write-Host "  配置: configs/train_config.yaml"
-Write-Host "  显存: ~10-11GB / 12GB"
-Write-Host "  预计时间: ~2-3 小时 (3 epochs)"
 Write-Host ""
 
 Push-Location LLaMA-Factory
+try {
+    $datasetInfoPath = "data\dataset_info.json"
+    $backupPath = "data\dataset_info.json.bak"
 
-# 备份原有 dataset_info.json
-if (Test-Path "data/dataset_info.json") {
-    Copy-Item "data/dataset_info.json" "data/dataset_info.json.bak" -Force
+    if (Test-Path $datasetInfoPath) {
+        Copy-Item $datasetInfoPath $backupPath -Force
+    }
+
+    $ourInfo = Get-Content "..\data\dataset_info.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+    $factoryInfo = Get-Content $datasetInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+    foreach ($key in $ourInfo.PSObject.Properties.Name) {
+        $factoryInfo | Add-Member -NotePropertyName $key -NotePropertyValue $ourInfo.$key -Force
+    }
+
+    $factoryInfo | ConvertTo-Json -Depth 10 | Set-Content $datasetInfoPath -Encoding UTF8
+
+    & "..\$python" src\train.py "..\$runtimeConfig"
+    if ($LASTEXITCODE -ne 0) {
+        throw "LLaMA-Factory training failed with exit code $LASTEXITCODE"
+    }
+} finally {
+    if (Test-Path $backupPath) {
+        Move-Item $backupPath $datasetInfoPath -Force
+    }
+    Pop-Location
 }
 
-# 复制我们的 dataset_info.json (合并)
-$ourInfo = Get-Content "..\data\dataset_info.json" -Raw | ConvertFrom-Json
-$factoryInfo = Get-Content "data\dataset_info.json" -Raw | ConvertFrom-Json
-
-foreach ($key in $ourInfo.PSObject.Properties.Name) {
-    $factoryInfo | Add-Member -NotePropertyName $key -NotePropertyValue $ourInfo.$key -Force
-}
-
-$factoryInfo | ConvertTo-Json -Depth 10 | Set-Content "data\dataset_info.json" -Encoding UTF8
-
-# 启动训练
-python src/train.py ..\configs\train_config.yaml
-
-Pop-Location
-
-Write-Host "`n============================================================" -ForegroundColor Cyan
-Write-Host "训练完成！" -ForegroundColor Green
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "Training finished." -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "输出文件:" -ForegroundColor Yellow
-Write-Host "  LoRA Adapter: output/ecommerce_qlora_sft/"
-Write-Host "  训练日志: output/ecommerce_qlora_sft/trainer_log.jsonl"
+if ($SmokeTest) {
+    Write-Host "Output:" -ForegroundColor Yellow
+    Write-Host "  Smoke LoRA Adapter: output\ecommerce_qlora_sft_8b_smoke\"
+} else {
+    Write-Host "Output:" -ForegroundColor Yellow
+    Write-Host "  LoRA Adapter: output\ecommerce_qlora_sft_8b\"
+}
 Write-Host ""
-Write-Host "下一步:" -ForegroundColor Yellow
-Write-Host "  1. 评估: python src\evaluation\judge.py --model $modelPath --lora output\ecommerce_qlora_sft"
-Write-Host "  2. 启动 vLLM: .\scripts\serve.ps1"
-Write-Host "  3. 启动 API: .\scripts\serve_api.ps1"
+Write-Host "Next:" -ForegroundColor Yellow
+Write-Host "  1. Full training: .\scripts\train_local.ps1"
+Write-Host "  2. Eval: venv312\Scripts\python.exe scripts\compare_models.py --base $ModelPath --lora output\ecommerce_qlora_sft_8b"

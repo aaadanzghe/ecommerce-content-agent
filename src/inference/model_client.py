@@ -23,7 +23,7 @@ class ModelConfig:
     model_name: str = "ecommerce-copywriter"
     api_base: str = "http://localhost:8000/v1"
     api_key: str = "not-needed"
-    # transformers 后端
+    # Transformers 后端
     model_path: str = ""
     lora_path: str = ""
     # 生成参数
@@ -164,7 +164,7 @@ class ModelClient:
         except json.JSONDecodeError:
             pass
 
-        # 尝试提取 ```json ... ``` 块
+        # 尝试提取 JSON 代码块
         match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
         if match:
             try:
@@ -190,7 +190,7 @@ class MockModelClient(ModelClient):
         system = system_prompt.lower() if system_prompt else ""
         user = user_message.lower() if user_message else ""
 
-        # 1. 商品理解 Agent (优先匹配，避免与其他重叠)
+        # 1. 商品理解智能体（优先匹配，避免与其他任务重叠）
         if "商品分析专家" in system or "提炼卖点" in system:
             return json.dumps({
                 "selling_points": ["主动降噪技术", "30小时超长续航", "IPX5防水防汗", "13mm大动圈音质", "蓝牙5.3低延迟"],
@@ -199,7 +199,7 @@ class MockModelClient(ModelClient):
                 "price_positioning": "mid"
             }, ensure_ascii=False)
 
-        # 2. 文案生成 Agent
+        # 2. 文案生成智能体
         if "文案撰写师" in system or "optimized_title" in user:
             return json.dumps({
                 "optimized_title": "【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水",
@@ -214,7 +214,7 @@ class MockModelClient(ModelClient):
                 "social_copy": "通勤路上太吵？健身房里总被打断？这款TWS Pro降噪耳机真的拯救了我！ANC主动降噪一戴就静，30小时续航一周充一次就够了。IPX5防水运动出汗也不怕，音质完全超出这个价位的预期！#降噪耳机 #TWS #数码好物"
             }, ensure_ascii=False)
 
-        # 3. SEO Agent
+        # 3. SEO 智能体
         if "seo 专家" in system or "搜索关键词" in system:
             return json.dumps({
                 "seo_keywords": ["降噪耳机", "真无线蓝牙耳机", "TWS耳机", "主动降噪", "长续航耳机", "运动耳机", "蓝牙5.3"],
@@ -222,7 +222,7 @@ class MockModelClient(ModelClient):
                 "category_keywords": ["数码配件", "音频设备"]
             }, ensure_ascii=False)
 
-        # 4. 重写 Rewrite Agent (必须在 Compliance 之前，因为 system prompt 包含"优化")
+        # 4. 重写智能体（必须在合规检查前执行，因为系统提示词包含“优化”）
         if "文案优化专家" in system or "rewrite_reason" in user:
             return json.dumps({
                 "optimized_title": "【ANC降噪】TWS Pro真无线耳机 30h续航 IPX5防水 游戏低延迟",
@@ -238,7 +238,7 @@ class MockModelClient(ModelClient):
                 "rewrite_reason": "优化SEO关键词密度，增强卖点数据化表达，补充Type-C快充细节"
             }, ensure_ascii=False)
 
-        # 5. 评分 Judge Agent
+        # 5. 评分智能体
         if "质量评估专家" in system or "维度打分" in system:
             return json.dumps({
                 "accuracy": {"score": 4, "reason": "产品属性准确，无虚构信息"},
@@ -248,7 +248,7 @@ class MockModelClient(ModelClient):
                 "overall_comment": "整体质量良好，SEO维度有提升空间"
             }, ensure_ascii=False)
 
-        # 6. 合规检查 Agent (放在最后，条件较宽泛)
+        # 6. 合规检查智能体（放在最后，条件较宽泛）
         if "合规审核专家" in system or ("审核" in system and "优化" not in system):
             return json.dumps({
                 "is_compliant": True,

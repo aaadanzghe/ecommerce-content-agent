@@ -71,6 +71,7 @@ wheels/
 
 # === 虚拟环境 ===
 venv/
+venv312/
 env/
 ENV/
 .venv/
@@ -91,6 +92,9 @@ desktop.ini
 # === Jupyter ===
 .ipynb_checkpoints/
 *.ipynb
+
+# === 缓存 ===
+.cache/
 
 # === 日志 ===
 *.log
