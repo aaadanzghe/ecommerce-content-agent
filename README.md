@@ -11,13 +11,13 @@
 
 面向电商卖家的多 Agent 内容生产系统。以商品结构化信息为输入，通过 8 个业务 Agent 完成「商品理解 → 文案生成 → SEO 优化 → 合规审核 → 质量评分 → 自动重写 → 图片生成 → 短视频生成」流程。文本侧支持 Mock、vLLM、Transformers + LoRA 和 OpenAI 兼容 API；视觉侧已实现 Seedream、Seedance 客户端及 Mock 链路。
 
-> 当前状态：Mock 文案、图片、视频全链路已验证；Qwen3-8B QLoRA 配置和脚本已就绪，但训练结果尚未产出；真实 Seedream/Seedance 调用需要有效的火山引擎方舟凭证，尚未在本仓库中完成带凭证验收。
+> 当前状态：Mock 文案全链路已验证；图片和视频链路均已有真实 API 产物（见下方「真实产物展示」）；Qwen3-8B QLoRA 配置和脚本已就绪，训练结果尚未产出。
 
 ### 核心特点
 
 - **Agent 闭环**：生成 → 评分 → 重写 → 再评分，低质量内容自动优化，最多 N 轮迭代
-- **图片生成**：按平台构建图片 prompt，支持 Mock 和 Seedream API 客户端
-- **短视频生成**：按平台构建视频 prompt，支持 Mock 和 Seedance API 客户端
+- **图片生成**：按平台构建图片 prompt，Seedream API 已生成真实产物（见 `docs/showcase/`）
+- **短视频生成**：按平台构建视频 prompt，Seedance API 已生成真实产物（见 `docs/showcase/`）
 - **微调模型接入**：支持通过 Transformers + LoRA 或 vLLM 加载微调结果；当前训练主线为 Qwen3-8B
 - **多平台适配**：淘宝、Amazon、抖音、小红书 四种平台风格，不同模板和语气
 - **四维质量评估**：LLM-as-Judge（准确性/吸引力/合规性/SEO）+ ROUGE-L + 确定性指标
@@ -37,8 +37,8 @@
 | 合规检查 | 确定性规则（13+ 广告法违禁词）+ LLM 双重审核 | ✅ |
 | 质量评分 | LLM-as-Judge 四维评分（准确性/吸引力/合规性/SEO） | ✅ |
 | 自动重写 | 根据低分维度定向重写，保持已通过部分不变 | ✅ |
-| 产品图片生成 | 自动构建图片 prompt；Mock 已验证，Seedream API 客户端待带凭证验收 | 🟡 |
-| 短视频生成 | 自动构建视频 prompt；Mock 已验证，Seedance API 客户端待带凭证验收 | 🟡 |
+| 产品图片生成 | 自动构建图片 prompt；Seedream API 已生成真实产物（见 docs/showcase） | ✅ |
+| 短视频生成 | 自动构建视频 prompt；Seedance API 已生成真实产物（见 docs/showcase） | ✅ |
 | 三路模型对比 | 评估脚本已实现；需训练产物后执行完整对比 | 🟡 |
 | 4 种模型后端 | Mock / vLLM / Transformers+LoRA / 外部 API 统一切换 | ✅ |
 | Docker 部署 | Mock API 配置已提供；GPU/vLLM profile 仍沿用 14B 路径，使用前需按本地模型调整 | 🟡 |
@@ -53,64 +53,42 @@
 | LangGraph 编排 | Supervisor 动态路由 + Checkpoint 持久化 | 中 |
 | 异步任务 + SSE | 任务队列 + 实时推送生成进度 | 低 |
 
-## 架构
+## 真实产物展示
 
-```
-                          ┌─────────────────────┐
-                          │   .env 配置中心      │
-                          │  API Key / 模型路径   │
-                          │  生成参数 / 阈值      │
-                          └──────────┬──────────┘
-                                     │
-                          ┌──────────▼──────────┐
-                          │  FastAPI 服务层      │
-                          │  POST /generate      │
-                          │  POST /generate/image│
-                          │  POST /generate/video│
-                          │  POST /generate/all  │
-                          │  GET  /health        │
-                          └──────────┬──────────┘
-                                     │
-                   ┌─────────────────▼─────────────────┐
-                   │       ContentOrchestrator          │
-                   │  编排器: 串联 6 步 + 重写 + 图片/视频│
-                   └─────────────────┬─────────────────┘
-                                     │
-     ┌───────┬───────┬───────┬───────┼───────┬───────┬───────┬───────┬───────┐
-     ▼       ▼       ▼       ▼       ▼       ▼       ▼       ▼       ▼       ▼
-┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐
-│商品理解││文案生成││SEO优化││合规检查││质量评分││自动重写││图片生成││视频生成│
-│Agent  ││Agent  ││Agent  ││Agent  ││Agent  ││Agent  ││Agent  ││Agent  │
-└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘
-    │        │        │        │        │        │        │        │
-    └────────┴────────┴────────┴────────┴────────┘        │        │
-                                     │                    │        │
-                          ┌──────────▼──────────┐  ┌──────▼──────┐┌──────▼──────┐
-                          │   ModelClient        │  │ImageClient  ││VideoClient  │
-                          │   统一文本模型接口     │  │Seedream图片 ││Seedance视频 │
-                          └──────────┬──────────┘  └──────┬──────┘└──────┬──────┘
-                                     │                    │              │
-              ┌──────────────────────┼───────────┐  ┌─────┼──────┐  ┌────┼──────┐
-              ▼                      ▼           ▼  ▼             ▼  ▼           ▼
-     ┌────────────────┐   ┌────────────────┐ ┌────────┐┌────────┐┌────────┐┌────────┐
-     │  Mock 后端      │   │  vLLM 后端      │ │Mock    ││Seedream││Mock    ││Seedance│
-     │  无 GPU 验证    │   │  OpenAI 兼容    │ │验证    ││API     ││验证    ││API     │
-     └────────────────┘   └────────────────┘ └────────┘└────────┘└────────┘└────────┘
-```
+以下产物均由项目 Agent 链路真实生成，原图/视频存放在 `docs/showcase/`。
 
-### Agent 职责
+### 产品展示图（Seedream API）
 
-| Agent | 职责 | 输入 | 输出 |
-|-------|------|------|------|
-| ProductUnderstandingAgent | 解析商品属性、提炼卖点、推断目标人群 | 商品标题 + 属性 | 卖点列表、目标人群、使用场景、价格定位 |
-| CopywritingAgent | 生成多平台文案（标题/卖点/描述/社媒） | 商品理解结果 + 平台 | 优化标题、五点卖点、详情页描述、社媒文案 |
-| SEOAgent | 生成搜索关键词 | 商品信息 + 文案 | 核心词、长尾词、品类词 |
-| ComplianceAgent | 违禁词检测 + LLM 审核 | 完整文案 | 合规判定、违规项、风险等级 |
-| JudgeAgent | 四维质量评分 | 商品信息 + 文案 | 各维度评分 + 改进建议 |
-| RewriteAgent | 定向重写低质量内容 | 原始文案 + 评分反馈 | 优化后文案 + 修改说明 |
-| ImageGenerationAgent | 根据商品和文案构建图片 prompt，调用 Seedream 生成产品展示图 | 商品信息 + 文案 + 平台 | 图片 prompt、task_id、图片URL、本地路径 |
-| VideoGenerationAgent | 根据商品和文案构建视频 prompt，调用 Seedance 生成短视频 | 商品信息 + 文案 + 平台 | 视频 prompt、task_id、视频URL、本地路径 |
-| ContentOrchestrator | 编排全部 Agent 流程 | 商品信息 | 最终内容包（含图片 + 视频） |
+由 ImageGenerationAgent 构建平台 prompt 后调用 Seedream API 生成（TWS Pro 真无线降噪耳机 · 淘宝白底图风格）：
+
+![TWS Pro 产品展示图](docs/showcase/tws_pro_hero.jpg)
+
+### 产品短视频（Seedance API）
+
+由 VideoGenerationAgent 构建视频 prompt 后调用 Seedance API 生成（小米手环 8 Pro · 抖音展示风格）：
+
+[▶ 观看产品短视频](docs/showcase/xiaomi_band8_pro.mp4)
+
+### 文案示例
+
+由 CopywritingAgent + SEOAgent + ComplianceAgent + JudgeAgent 全链路生成（TWS Pro 真无线降噪耳机 · 淘宝平台）：
+
+> **标题**：【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水
+>
+> **五点卖点**：
+> 1. ANC主动降噪，沉浸式聆听体验
+> 2. 30小时复合续航，一周一充无忧
+> 3. IPX5级防水防汗，运动健身不受限
+> 4. 13mm生物振膜动圈，HiFi级音质表现
+> 5. 蓝牙5.3技术，游戏低延迟不断连
+>
+> **详情页描述**：XX品牌 TWS Pro 真无线降噪耳机，采用 ANC 主动降噪技术，有效屏蔽通勤、办公环境噪音。13mm 生物振膜动圈搭配蓝牙 5.3 芯片，带来 HiFi 级音质与超低延迟游戏体验。IPX5 防水等级，运动出汗无忧。复合续航达 30 小时，一周一充，告别电量焦虑。
+>
+> **社媒文案**：通勤路上太吵？健身房里总被打断？这款TWS Pro降噪耳机真的拯救了我！ANC一开整个世界都安静了～续航30小时一周不充电，IPX5防水运动随便造 #降噪耳机 #真无线耳机 #TWSPro
+>
+> **SEO 关键词**：降噪耳机 / 真无线蓝牙耳机 / TWS耳机 / 主动降噪 / 长续航耳机
+>
+> **质量评分**：准确性 4/5 | 吸引力 4/5 | 合规性 5/5 | SEO 3/5 | 总分 4.05/5（通过）
 
 ## 环境配置
 
@@ -679,7 +657,7 @@ client = create_client(ModelConfig(
 
 | 项目 | 定位 | 电商专注度 | 多 Agent | 微调模型 | 图文视频 | 开源 |
 |------|------|-----------|---------|---------|---------|------|
-| **本项目** | 电商内容生产闭环 | ⭐⭐⭐⭐⭐ | 8 Agent | Qwen3 QLoRA（训练中） | Mock 已验证 | ✅ |
+| **本项目** | 电商内容生产闭环 | ⭐⭐⭐⭐⭐ | 8 Agent | Qwen3 QLoRA（训练中） | 图片+视频真实产物已附 | ✅ |
 | [EcomGPT](https://github.com/Alibaba-NLP/EcomGPT) | 电商指令微调 LLM | ⭐⭐⭐⭐⭐ | ❌ | BLOOMZ | ❌ | ✅ |
 | [KOBE](https://github.com/THUDM/KOBE) | 知识驱动产品描述 | ⭐⭐⭐⭐ | ❌ | Seq2Seq | ❌ | ✅ |
 | [ecommerce-ai-roadmap](https://github.com/kangise/ecommerce-ai-roadmap) | 电商 AI 知识库 | ⭐⭐⭐⭐⭐ | Prompt 工程 | ❌ | ❌ | ✅ |
@@ -692,7 +670,7 @@ client = create_client(ModelConfig(
 2. **微调接口就绪**：已提供 QLoRA 配置及 LoRA/vLLM 推理接口，训练与对比结果待产出
 3. **质量闭环**：生成 → 评分 → 重写 → 再评分的自动优化机制
 4. **多平台原生**：淘宝/Amazon/抖音/小红书四种平台模板，非通用翻译
-5. **图文视频链路**：图片和视频 Mock 流程已跑通，并预留 Seedream/Seedance API 后端
+5. **图文视频链路**：图片和视频均已有真实 API 产物（Seedream + Seedance），附在 `docs/showcase/`
 
 ## 项目结构
 
@@ -756,8 +734,8 @@ ecommerce-copywriter-llm/
 | 微调方法 | QLoRA 4-bit (bitsandbytes + NF4 + 双重量化) |
 | 评估 | LLM-as-Judge + ROUGE-L + 确定性指标 |
 | 推理引擎 | vLLM |
-| 图片生成 | Mock / 火山引擎方舟 Seedream API 客户端 |
-| 视频生成 | Mock / 火山引擎方舟 Seedance API 客户端 |
+| 图片生成 | 火山引擎方舟 Seedream API（真实产物已附） / Mock |
+| 视频生成 | 火山引擎方舟 Seedance API（真实产物已附） / Mock |
 | API 服务 | FastAPI + Pydantic v2 |
 | 配置管理 | python-dotenv + .env |
 | 容器化 | Docker + Docker Compose |
@@ -770,8 +748,8 @@ ecommerce-copywriter-llm/
 | Iteration 0 | 项目整理与范围收敛 | ✅ 完成 |
 | Iteration 1 | 文案生成 Agent MVP + 6 个业务 Agent 闭环 | ✅ 完成 |
 | Iteration 2 | 接入微调模型 + 三路对比评估 | 🔄 进行中（8B 配置就绪，待训练） |
-| Iteration 3 | 短视频生成 Agent（多平台 prompt + Mock/Seedance 客户端） | 🟡 Mock 已验证 |
-| Iteration 4 | 图片生成 Agent（多平台 prompt + Mock/Seedream 客户端） | 🟡 Mock 已验证 |
+| Iteration 3 | 短视频生成 Agent（多平台 prompt + Mock/Seedance 客户端） | ✅ Seedance 真实产物已附 |
+| Iteration 4 | 图片生成 Agent（多平台 prompt + Mock/Seedream 客户端） | ✅ Seedream 真实产物已附 |
 | Iteration 5 | Listing 优化 Agent（竞品分析 + 平台规则） | 📋 规划中 |
 | Iteration 6 | RAG 知识库（平台规则 + 品牌资料 + 商品目录） | 📋 规划中 |
 | Iteration 7 | LangGraph 编排 + Supervisor 路由 + Checkpoint | 📋 规划中 |
