@@ -138,6 +138,8 @@ class ContentPackage:
     rewrite_reason: str = ""
     rewrite_history: List[dict] = field(default_factory=list)   # 重写记录
     platform: str = "taobao"
+    video: Optional[dict] = None      # 视频生成结果（可选）
+    image: Optional[dict] = None      # 图片生成结果（可选）
 
     def to_dict(self) -> dict:
         result = {
@@ -152,4 +154,8 @@ class ContentPackage:
         }
         if self.quality_score:
             result["quality_score"] = self.quality_score.to_dict()
+        if self.video:
+            result["video"] = self.video
+        if self.image:
+            result["image"] = self.image
         return result

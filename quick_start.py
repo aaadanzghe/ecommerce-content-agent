@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 快速启动脚本 — 无需 GPU 即可验证 Agent 闭环流程
-使用 Mock 模型客户端，演示完整的生成→评分→重写流程
+使用 Mock 模型客户端，演示完整的生成→评分→重写→图片生成→视频生成流程
 
 用法:
-    python quick_start.py                  # 使用内置示例
+    python quick_start.py                  # 使用内置示例（含图片+视频生成）
+    python quick_start.py --no-image       # 不生成图片
+    python quick_start.py --no-video       # 不生成视频
+    python quick_start.py --no-image --no-video  # 仅文案生成
     python quick_start.py --product examples/sample_products.json
 """
 
@@ -18,6 +21,8 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from src.schemas import ProductProfile
 from src.inference.model_client import get_mock_client
+from src.inference.video_client import get_mock_video_client
+from src.inference.image_client import get_mock_image_client
 from src.agents.orchestrator import ContentOrchestrator
 
 
@@ -27,6 +32,10 @@ def main():
     parser = argparse.ArgumentParser(description="电商内容生产 Agent - 快速启动")
     parser.add_argument("--product", type=str, default=None,
                         help="商品 JSON 文件路径（不指定则使用内置示例）")
+    parser.add_argument("--no-image", action="store_true",
+                        help="不生成图片（默认生成 Mock 图片）")
+    parser.add_argument("--no-video", action="store_true",
+                        help="不生成视频（默认生成 Mock 视频）")
     args = parser.parse_args()
 
     # 加载商品信息
@@ -51,7 +60,17 @@ def main():
 
     # 使用 Mock 客户端创建编排器
     print("使用 Mock 模型客户端（无需 GPU）")
-    orchestrator = ContentOrchestrator(get_mock_client(), max_rewrite_rounds=1)
+    image_client = None if args.no_image else get_mock_image_client()
+    video_client = None if args.no_video else get_mock_video_client()
+    orchestrator = ContentOrchestrator(
+        get_mock_client(),
+        max_rewrite_rounds=1,
+        video_client=video_client,
+        image_client=image_client,
+    )
+
+    generate_image = not args.no_image
+    generate_video = not args.no_video
 
     # 逐个生成
     for i, product_dict in enumerate(products):
@@ -60,7 +79,11 @@ def main():
         print(f"{'#'*60}")
 
         product = ProductProfile.from_dict(product_dict)
-        package = orchestrator.generate(product)
+        package = orchestrator.generate(
+            product,
+            generate_image=generate_image,
+            generate_video=generate_video,
+        )
 
         # 打印最终结果
         print(f"\n--- 最终输出 ---")

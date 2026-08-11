@@ -3,21 +3,26 @@
 Agent 编排器
 串联所有 Agent，完成完整的文案生成闭环：
 
-  商品理解 → 文案生成 → SEO → 合规检查 → 质量评分 → (低分重写) → 输出
+  商品理解 → 文案生成 → SEO → 合规检查 → 质量评分 → (低分重写) → (图片生成) → (视频生成) → 输出
 
 支持三路对比：base_model / fine_tuned / fine_tuned+rewrite
+图片和视频生成为可选步骤，通过 generate_image / generate_video 开启
 """
 
 import json
 import time
 from src.schemas import ProductProfile, ContentPackage, QualityScore
 from src.inference.model_client import ModelClient, create_client, ModelConfig, get_mock_client
+from src.inference.video_client import VideoClient, VideoConfig, create_video_client, get_mock_video_client
+from src.inference.image_client import ImageClient, ImageConfig, create_image_client, get_mock_image_client
 from src.agents.product_understanding import ProductUnderstandingAgent
 from src.agents.copywriting import CopywritingAgent
 from src.agents.seo import SEOAgent
 from src.agents.compliance import ComplianceAgent
 from src.agents.judge import JudgeAgent
 from src.agents.rewrite import RewriteAgent
+from src.agents.video_generation import VideoGenerationAgent
+from src.agents.image_generation import ImageGenerationAgent
 
 
 class ContentOrchestrator:
@@ -29,11 +34,19 @@ class ContentOrchestrator:
         result = orchestrator.generate(product_profile)
     """
 
-    def __init__(self, model_client: ModelClient = None, max_rewrite_rounds: int = 1):
+    def __init__(
+        self,
+        model_client: ModelClient = None,
+        max_rewrite_rounds: int = 1,
+        video_client: VideoClient = None,
+        image_client: ImageClient = None,
+    ):
         """
         Args:
             model_client: 模型客户端（默认使用 Mock）
             max_rewrite_rounds: 最大重写轮次（默认 1 轮）
+            video_client: 视频生成客户端（默认 None，不启用视频生成）
+            image_client: 图片生成客户端（默认 None，不启用图片生成）
         """
         self.model = model_client or get_mock_client()
         self.max_rewrite_rounds = max_rewrite_rounds
@@ -46,7 +59,17 @@ class ContentOrchestrator:
         self.judge_agent = JudgeAgent(self.model)
         self.rewrite_agent = RewriteAgent(self.model)
 
-    def generate(self, product: ProductProfile) -> ContentPackage:
+        # 图片生成 Agent（可选）
+        self.image_agent = None
+        if image_client is not None:
+            self.image_agent = ImageGenerationAgent(self.model, image_client)
+
+        # 视频生成 Agent（可选）
+        self.video_agent = None
+        if video_client is not None:
+            self.video_agent = VideoGenerationAgent(self.model, video_client)
+
+    def generate(self, product: ProductProfile, generate_video: bool = False, generate_image: bool = False) -> ContentPackage:
         """
         执行完整的文案生成闭环
 
@@ -57,14 +80,16 @@ class ContentOrchestrator:
         4. 合规检查
         5. 质量评分
         6. 低分重写（如果未通过阈值）
-        7. 返回 ContentPackage
+        7. 图片生成（可选，需要 image_agent）
+        8. 视频生成（可选，需要 video_agent）
+        9. 返回 ContentPackage
         """
         print(f"\n{'='*60}")
         print(f"开始生成文案: {product.title}")
         print(f"{'='*60}")
 
         # 第 1 步：商品理解
-        print("\n[1/6] 商品理解...")
+        print("\n[1/8] 商品理解...")
         understanding = self.understanding_agent.run(product)
         # 更新商品信息（补全卖点等）
         if understanding["selling_points"]:
@@ -77,19 +102,19 @@ class ContentOrchestrator:
         print(f"  目标人群: {product.target_audience}")
 
         # 第 2 步：文案生成
-        print("\n[2/6] 文案生成...")
+        print("\n[2/8] 文案生成...")
         content = self.copywriting_agent.run(product)
         print(f"  标题: {content['optimized_title']}")
         print(f"  卖点数: {len(content['selling_points'])}")
 
         # 第 3 步：SEO 关键词
-        print("\n[3/6] SEO 关键词...")
+        print("\n[3/8] SEO 关键词...")
         seo_result = self.seo_agent.run(product)
         content["seo_keywords"] = seo_result.get("seo_keywords", [])
         print(f"  关键词: {content['seo_keywords']}")
 
         # 第 4 步：合规检查
-        print("\n[4/6] 合规检查...")
+        print("\n[4/8] 合规检查...")
         full_text = f"{content['optimized_title']} {' '.join(content['selling_points'])} {content['description']} {content['social_copy']}"
         compliance = self.compliance_agent.run(product, content=full_text)
         print(f"  合规: {'通过' if compliance['is_compliant'] else '有问题'}")
@@ -97,7 +122,7 @@ class ContentOrchestrator:
             print(f"  问题: {compliance['violations']}")
 
         # 第 5 步：质量评分
-        print("\n[5/6] 质量评分...")
+        print("\n[5/8] 质量评分...")
         score = self.judge_agent.run(product, content)
         print(f"  准确性: {score.accuracy.score}/5")
         print(f"  吸引力: {score.attractiveness.score}/5")
@@ -110,7 +135,7 @@ class ContentOrchestrator:
         rewrite_reason = ""
 
         if not score.passed and self.max_rewrite_rounds > 0:
-            print(f"\n[6/6] 自动重写 (最多 {self.max_rewrite_rounds} 轮)...")
+            print(f"\n[6/8] 自动重写 (最多 {self.max_rewrite_rounds} 轮)...")
 
             for round_num in range(1, self.max_rewrite_rounds + 1):
                 print(f"\n  --- 重写第 {round_num} 轮 ---")
@@ -143,7 +168,7 @@ class ContentOrchestrator:
                     print(f"  已通过质量阈值，停止重写")
                     break
         else:
-            print(f"\n[6/6] 质量达标，无需重写")
+            print(f"\n[6/8] 质量达标，无需重写")
 
         # 组装最终输出
         package = ContentPackage(
@@ -158,10 +183,56 @@ class ContentOrchestrator:
             platform=product.platform,
         )
 
+        # 第 7 步：图片生成（可选）
+        if generate_image and self.image_agent is not None:
+            print(f"\n[7/8] 图片生成...")
+            try:
+                image_result = self.image_agent.run(
+                    product=product,
+                    content=content,
+                    platform=product.platform,
+                )
+                package.image = image_result
+                print(f"  状态: {image_result.get('status', 'unknown')}")
+                if image_result.get("local_path"):
+                    print(f"  本地路径: {image_result['local_path']}")
+                if image_result.get("image_url"):
+                    print(f"  图片URL: {image_result['image_url']}")
+            except Exception as e:
+                print(f"  图片生成失败: {e}")
+                package.image = {"status": "failed", "error": str(e)}
+        elif generate_image and self.image_agent is None:
+            print(f"\n[7/8] 图片生成跳过（未配置 image_client）")
+
+        # 第 8 步：视频生成（可选）
+        if generate_video and self.video_agent is not None:
+            print(f"\n[8/8] 视频生成...")
+            try:
+                video_result = self.video_agent.run(
+                    product=product,
+                    content=content,
+                    platform=product.platform,
+                )
+                package.video = video_result
+                print(f"  状态: {video_result.get('status', 'unknown')}")
+                if video_result.get("local_path"):
+                    print(f"  本地路径: {video_result['local_path']}")
+                if video_result.get("video_url"):
+                    print(f"  视频URL: {video_result['video_url']}")
+            except Exception as e:
+                print(f"  视频生成失败: {e}")
+                package.video = {"status": "failed", "error": str(e)}
+        elif generate_video and self.video_agent is None:
+            print(f"\n[8/8] 视频生成跳过（未配置 video_client）")
+
         print(f"\n{'='*60}")
         print(f"文案生成完成!")
         print(f"  最终评分: {score.total}/5")
         print(f"  重写轮数: {len(rewrite_history)}")
+        if generate_image and self.image_agent is not None:
+            print(f"  图片生成: {'完成' if package.image else '跳过'}")
+        if generate_video and self.video_agent is not None:
+            print(f"  视频生成: {'完成' if package.video else '跳过'}")
         print(f"{'='*60}")
 
         return package
