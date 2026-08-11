@@ -60,13 +60,13 @@ services:
       - ./output:/app/output
     command: >
       python3 -m vllm.entrypoints.openai.api_server
-      --model /app/models/Qwen3-14B-Instruct
+      --model /app/models/Qwen3-8B
       --port 8000
       --host 0.0.0.0
       --dtype bfloat16
       --max-model-len 4096
       --enable-lora
-      --lora-modules ecommerce-lora=/app/output/ecommerce_qlora_sft
+      --lora-modules ecommerce-lora=/app/output/ecommerce_qlora_sft_8b
     deploy:
       resources:
         reservations:

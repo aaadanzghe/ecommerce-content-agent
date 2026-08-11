@@ -1,6 +1,6 @@
 # E-commerce Content Agent
 
-> 电商内容生产 Agent：商品理解 → 文案生成 → SEO → 合规检查 → 质量评分 → 自动重写 → 图片生成 → 短视频生成 → 多平台适配
+> 电商内容智能体：从商品理解到文案、图片、短视频生成的全链路AI系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -675,7 +675,7 @@ client = create_client(ModelConfig(
 ## 项目结构
 
 ```
-ecommerce-copywriter-llm/
+ecommerce-content-agent/
 ├── src/
 │   ├── schemas.py                  # ProductProfile, ContentPackage, QualityScore
 │   ├── agents/
