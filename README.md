@@ -136,18 +136,23 @@ cp .env.example .env
 | `TEMPERATURE` | `0.7` | 生成温度 |
 | `TOP_P` | `0.9` | Nucleus sampling 阈值 |
 | `MAX_TOKENS` | `1024` | 最大生成 token 数 |
-| `API_HOST` | `0.0.0.0` | API 监听地址 |
+| `API_HOST` | `127.0.0.1` | API 监听地址；无鉴权时不要直接暴露公网 |
 | `API_PORT` | `8888` | API 端口 |
 | `MAX_REWRITE_ROUNDS` | `2` | 最大重写轮次 |
 | `VIDEO_BACKEND` | （空） | 视频后端：留空禁用 / `mock` / `api` |
 | `SEEDANCE_API_KEY` | （空） | Seedance API 密钥（火山引擎方舟） |
-| `SEEDANCE_MODEL` | `doubao-seedance-1.0-pro` | 视频生成模型（pro / lite） |
+| `SEEDANCE_MODEL` | （空） | 方舟控制台中已开通的模型或推理接入点 ID |
+| `SEEDANCE_CREATE_URL` | 方舟内容任务接口 | 视频任务提交地址 |
+| `SEEDANCE_QUERY_URL` | 方舟内容任务接口 | 视频任务查询地址 |
 | `VIDEO_DURATION` | `5` | 视频时长（秒）：5 / 10 |
 | `VIDEO_RESOLUTION` | `720p` | 视频分辨率：720p / 1080p |
 | `IMAGE_BACKEND` | （空） | 图片后端：留空禁用 / `mock` / `api` |
 | `SEEDREAM_API_KEY` | （空） | Seedream API 密钥（火山引擎方舟） |
-| `SEEDREAM_MODEL` | `doubao-seedream-3.0` | 图片生成模型 |
+| `SEEDREAM_MODEL` | （空） | 方舟控制台中已开通的模型或推理接入点 ID |
+| `SEEDREAM_API_URL` | 方舟图片生成接口 | 图片生成地址 |
 | `IMAGE_SIZE` | `landscape_16_9` | 图片尺寸：square / portrait_4_3 / portrait_16_9 / landscape_4_3 / landscape_16_9 |
+| `MEDIA_OUTPUT_DIR` | `output` | 图片、视频和任务数据库的持久目录 |
+| `TASK_DB_PATH` | `output/tasks.db` | SQLite 任务数据库 |
 
 ### 模型后端切换
 
@@ -167,7 +172,7 @@ $env:LORA_PATH="output/ecommerce_qlora_sft_8b"
 # 外部 API（OpenAI / DashScope）
 $env:MODEL_BACKEND="api"
 $env:API_BASE="https://api.openai.com/v1"
-$env:API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+$env:API_KEY="<你的文本模型 API Key>"
 ```
 
 ### 视频生成配置
@@ -178,8 +183,8 @@ $env:VIDEO_BACKEND="mock"
 
 # Seedance API 模式（需要火山引擎方舟 API Key）
 $env:VIDEO_BACKEND="api"
-$env:SEEDANCE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-$env:SEEDANCE_MODEL="doubao-seedance-1.0-pro"  # 或 doubao-seedance-1.0-lite
+$env:SEEDANCE_API_KEY="<你的方舟 API Key>"
+$env:SEEDANCE_MODEL="<控制台中的模型或接入点 ID>"
 
 # 不启用视频生成（留空或不设置）
 # $env:VIDEO_BACKEND=""
@@ -193,8 +198,8 @@ $env:IMAGE_BACKEND="mock"
 
 # Seedream API 模式（需要火山引擎方舟 API Key）
 $env:IMAGE_BACKEND="api"
-$env:SEEDREAM_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-$env:SEEDREAM_MODEL="doubao-seedream-3.0"
+$env:SEEDREAM_API_KEY="<你的方舟 API Key>"
+$env:SEEDREAM_MODEL="<控制台中的模型或接入点 ID>"
 
 # 不启用图片生成（留空或不设置）
 # $env:IMAGE_BACKEND=""
@@ -211,8 +216,8 @@ $env:SEEDREAM_MODEL="doubao-seedream-3.0"
 ### 1. 安装依赖
 
 ```powershell
-# 安装核心依赖
-pip install fastapi uvicorn openai pydantic python-dotenv jieba
+# 安装运行依赖
+pip install -r requirements.txt
 
 # 完整安装（含训练依赖）
 pip install torch transformers datasets accelerate peft bitsandbytes vllm
@@ -291,6 +296,8 @@ docker-compose --profile vllm --profile full up -d
 ```
 
 > `docker-compose.yml` 的 vLLM 服务当前指向 `Qwen3-14B-Instruct` 和 `output/ecommerce_qlora_sft`，与当前 8B 训练主线不同；使用 GPU profile 前请按实际模型目录修改。
+>
+> 当前生产基线是本地虚拟环境直接运行。Docker 配置尚未纳入本轮真实多模态上线验收。
 
 ## API 文档
 
@@ -300,14 +307,15 @@ docker-compose --profile vllm --profile full up -d
 |------|------|------|
 | `/generate` | POST | 生成电商文案（Pydantic 校验输入输出） |
 | `/generate/image` | POST | 生成电商文案 + 产品展示图 |
-| `/generate/video` | POST | 生成电商文案 + 产品展示短视频 |
-| `/generate/all` | POST | 一键生成文案 + 图片 + 短视频 |
-| `/generate/raw` | POST | 生成文案（原始 dict 输入/输出，支持 `generate_image` / `generate_video` 参数） |
+| `/generate/video` | POST | 创建文案 + 视频异步任务，返回 HTTP 202 |
+| `/generate/all` | POST | 创建文案 + 图片 + 视频异步任务，返回 HTTP 202 |
+| `/tasks/{task_id}` | GET | 查询异步任务状态和结果 |
 | `/health` | GET | 健康检查 |
+| `/ready` | GET | 配置、SQLite 和输出目录就绪检查 |
 
 交互式 OpenAPI 文档在服务启动后可访问 `http://localhost:8888/docs`。
 
-> `/generate/image`、`/generate/video` 和 `/generate/all` 在相应后端未配置时仍会返回成功的文案响应，但对应的 `image`/`video` 字段为 `null`。Mock 后端返回占位文件路径；只有 `api` 后端会请求真实媒体。
+> 后端未配置时媒体接口返回 HTTP 503。Mock 后端返回占位文件；`api` 后端请求真实媒体。视频任务状态持久化在 SQLite，服务重启后会恢复未完成任务。
 
 ### POST /generate
 
@@ -364,9 +372,7 @@ docker-compose --profile vllm --profile full up -d
 
 ### POST /generate/video
 
-生成电商文案 + 产品展示短视频。需要 `.env` 中配置 `VIDEO_BACKEND=api` 或 `VIDEO_BACKEND=mock`。
-
-**请求体**（在 `/generate` 基础上增加 `custom_video_prompt`）：
+创建文案 + 视频异步任务。请求体在 `/generate` 基础上增加可选的 `custom_video_prompt`。
 
 ```json
 {
@@ -382,35 +388,20 @@ docker-compose --profile vllm --profile full up -d
 }
 ```
 
-**响应体**（在 `/generate` 基础上增加 `video` 字段）：
+接口立即返回 HTTP 202：
 
 ```json
 {
-  "optimized_title": "【防水重低音】SoundBox便携蓝牙音箱 12小时续航 IPX7防水",
-  "selling_points": ["...", "..."],
-  "description": "...",
-  "seo_keywords": ["蓝牙音箱", "防水音箱", "..."],
-  "social_copy": "露营神器！这款蓝牙音箱...",
-  "quality_score": {"total": 4.05, "passed": true, "...": "..."},
-  "rewrite_reason": "",
-  "rewrite_history": [],
-  "platform": "douyin",
-  "video": {
-    "video_prompt": "[抖音短视频风格...] 产品从背包中拿出，特写防水外壳...",
-    "task_id": "c4f8e2a1-xxxx-xxxx",
-    "status": "completed",
-    "video_url": "https://...",
-    "local_path": "output/video/c4f8e2a1.mp4",
-    "platform": "douyin"
-  }
+  "task_id": "9ddfe21a...",
+  "kind": "video",
+  "status": "queued",
+  "status_url": "/tasks/9ddfe21a..."
 }
 ```
 
 ### POST /generate/image
 
-生成电商文案 + 产品展示图。需要 `.env` 中配置 `IMAGE_BACKEND=api` 或 `IMAGE_BACKEND=mock`。
-
-**请求体**（在 `/generate` 基础上增加 `custom_image_prompt`）：
+同步生成文案 + 产品展示图。请求体在 `/generate` 基础上增加可选的 `custom_image_prompt`，成功时返回完整内容包及 `image` 字段。
 
 ```json
 {
@@ -446,14 +437,14 @@ docker-compose --profile vllm --profile full up -d
     "image_url": "https://...",
     "local_path": "output/image/d9a3b7c2.png",
     "platform": "taobao",
-    "image_size": "2560x1440"
+    "image_size": "square"
   }
 }
 ```
 
 ### POST /generate/all
 
-一键生成文案 + 产品展示图 + 产品展示短视频。需要同时配置 `IMAGE_BACKEND` 和 `VIDEO_BACKEND`。
+创建文案 + 图片 + 视频异步任务，需要同时配置图片和视频后端。
 
 **请求体**（在 `/generate` 基础上增加 `custom_image_prompt` 和 `custom_video_prompt`）：
 
@@ -468,7 +459,11 @@ docker-compose --profile vllm --profile full up -d
 }
 ```
 
-**响应体**（在 `/generate` 基础上增加 `image` 和 `video` 字段）。
+接口返回 HTTP 202，格式与视频任务一致，`kind` 为 `all`。
+
+### GET /tasks/{task_id}
+
+返回 `queued`、`running`、`succeeded` 或 `failed`。成功结果位于 `result`，失败详情位于 `error`；`upstream_task_id` 是方舟视频任务 ID。
 
 ### curl 示例
 
@@ -527,6 +522,9 @@ curl -X POST http://localhost:8888/generate/all \
 
 # 健康检查
 curl http://localhost:8888/health
+
+# 视频和 all 接口返回 202 后，使用响应中的 task_id 查询
+curl http://localhost:8888/tasks/<task_id>
 ```
 
 ## 多平台内容生成
@@ -758,8 +756,8 @@ ecommerce-copywriter-llm/
 | 微调方法 | QLoRA 4-bit (bitsandbytes + NF4 + 双重量化) |
 | 评估 | LLM-as-Judge + ROUGE-L + 确定性指标 |
 | 推理引擎 | vLLM |
-| 图片生成 | Mock / Seedream API 客户端（doubao-seedream-3.0） |
-| 视频生成 | Mock / Seedance API 客户端（doubao-seedance-1.0-pro） |
+| 图片生成 | Mock / 火山引擎方舟 Seedream API 客户端 |
+| 视频生成 | Mock / 火山引擎方舟 Seedance API 客户端 |
 | API 服务 | FastAPI + Pydantic v2 |
 | 配置管理 | python-dotenv + .env |
 | 容器化 | Docker + Docker Compose |

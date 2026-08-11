@@ -140,7 +140,12 @@ class VideoGenerationAgent(BaseAgent):
         print(f"[VideoAgent] 视频 prompt 构建完成 ({len(video_prompt)} 字)")
 
         # 2. 调用视频生成
-        result = self.video_client.generate(video_prompt, save=True)
+        result = self.video_client.generate(
+            video_prompt,
+            save=True,
+            task_id=kwargs.get("upstream_task_id", ""),
+            on_task_created=kwargs.get("on_task_created"),
+        )
 
         # 3. 返回完整结果
         return {

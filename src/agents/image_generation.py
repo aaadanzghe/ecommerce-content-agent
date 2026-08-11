@@ -145,7 +145,8 @@ class ImageGenerationAgent(BaseAgent):
         print(f"[ImageAgent] 图片 prompt 构建完成 ({len(image_prompt)} 字)")
 
         # 2. 调用图片生成
-        result = self.image_client.generate(image_prompt, save=True)
+        image_size = self.get_image_size(platform)
+        result = self.image_client.generate(image_prompt, save=True, image_size=image_size)
 
         # 3. 返回完整结果
         return {
@@ -155,5 +156,5 @@ class ImageGenerationAgent(BaseAgent):
             "image_url": result.get("image_url", ""),
             "local_path": result.get("local_path", ""),
             "platform": platform,
-            "image_size": self.get_image_size(platform),
+            "image_size": image_size,
         }

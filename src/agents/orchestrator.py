@@ -69,7 +69,16 @@ class ContentOrchestrator:
         if video_client is not None:
             self.video_agent = VideoGenerationAgent(self.model, video_client)
 
-    def generate(self, product: ProductProfile, generate_video: bool = False, generate_image: bool = False) -> ContentPackage:
+    def generate(
+        self,
+        product: ProductProfile,
+        generate_video: bool = False,
+        generate_image: bool = False,
+        custom_image_prompt: str = "",
+        custom_video_prompt: str = "",
+        upstream_video_task_id: str = "",
+        on_video_task_created=None,
+    ) -> ContentPackage:
         """
         执行完整的文案生成闭环
 
@@ -186,42 +195,38 @@ class ContentOrchestrator:
         # 第 7 步：图片生成（可选）
         if generate_image and self.image_agent is not None:
             print(f"\n[7/8] 图片生成...")
-            try:
-                image_result = self.image_agent.run(
-                    product=product,
-                    content=content,
-                    platform=product.platform,
-                )
-                package.image = image_result
-                print(f"  状态: {image_result.get('status', 'unknown')}")
-                if image_result.get("local_path"):
-                    print(f"  本地路径: {image_result['local_path']}")
-                if image_result.get("image_url"):
-                    print(f"  图片URL: {image_result['image_url']}")
-            except Exception as e:
-                print(f"  图片生成失败: {e}")
-                package.image = {"status": "failed", "error": str(e)}
+            image_result = self.image_agent.run(
+                product=product,
+                content=content,
+                platform=product.platform,
+                custom_prompt=custom_image_prompt,
+            )
+            package.image = image_result
+            print(f"  状态: {image_result.get('status', 'unknown')}")
+            if image_result.get("local_path"):
+                print(f"  本地路径: {image_result['local_path']}")
+            if image_result.get("image_url"):
+                print(f"  图片URL: {image_result['image_url']}")
         elif generate_image and self.image_agent is None:
             print(f"\n[7/8] 图片生成跳过（未配置 image_client）")
 
         # 第 8 步：视频生成（可选）
         if generate_video and self.video_agent is not None:
             print(f"\n[8/8] 视频生成...")
-            try:
-                video_result = self.video_agent.run(
-                    product=product,
-                    content=content,
-                    platform=product.platform,
-                )
-                package.video = video_result
-                print(f"  状态: {video_result.get('status', 'unknown')}")
-                if video_result.get("local_path"):
-                    print(f"  本地路径: {video_result['local_path']}")
-                if video_result.get("video_url"):
-                    print(f"  视频URL: {video_result['video_url']}")
-            except Exception as e:
-                print(f"  视频生成失败: {e}")
-                package.video = {"status": "failed", "error": str(e)}
+            video_result = self.video_agent.run(
+                product=product,
+                content=content,
+                platform=product.platform,
+                custom_prompt=custom_video_prompt,
+                upstream_task_id=upstream_video_task_id,
+                on_task_created=on_video_task_created,
+            )
+            package.video = video_result
+            print(f"  状态: {video_result.get('status', 'unknown')}")
+            if video_result.get("local_path"):
+                print(f"  本地路径: {video_result['local_path']}")
+            if video_result.get("video_url"):
+                print(f"  视频URL: {video_result['video_url']}")
         elif generate_video and self.video_agent is None:
             print(f"\n[8/8] 视频生成跳过（未配置 video_client）")
 

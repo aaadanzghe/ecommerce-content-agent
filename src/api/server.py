@@ -1,150 +1,63 @@
-# -*- coding: utf-8 -*-
-"""
-FastAPI 接口
-提供 REST API 供外部调用
+"""FastAPI service for text, image, and asynchronous video generation."""
 
-启动:
-    uvicorn src.api.server:app --host 0.0.0.0 --port 8888 --reload
-
-接口:
-    POST /generate          - 生成文案
-    POST /generate/image    - 生成文案 + 图片
-    POST /generate/video    - 生成文案 + 视频
-    POST /generate/all      - 生成文案 + 图片 + 视频
-    GET  /health            - 健康检查
-
-环境变量:
-    所有配置从 .env 文件或系统环境变量读取，详见 .env.example
-"""
-
-import json
+import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-# 加载 .env 文件（项目根目录）
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
 
-from src.schemas import ProductProfile
-from src.inference.model_client import create_client, ModelConfig, get_mock_client
-from src.inference.video_client import VideoConfig, create_video_client, get_mock_video_client
-from src.inference.image_client import ImageConfig, create_image_client, get_mock_image_client
 from src.agents.orchestrator import ContentOrchestrator
+from src.config import ConfigurationError, MediaSettings, get_env
+from src.inference.image_client import ImageConfig, create_image_client, get_mock_image_client
+from src.inference.model_client import ModelConfig, create_client, get_mock_client
+from src.inference.video_client import VideoConfig, create_video_client, get_mock_video_client
+from src.schemas import ProductProfile
+from src.tasks import TaskStore, TaskWorker
 
-app = FastAPI(
-    title="电商内容生产 Agent",
-    description="从商品信息到多平台内容的一站式生成服务（支持文案 + 图片 + 短视频）",
-    version="0.4.0",
+logging.basicConfig(
+    level=get_env("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logger = logging.getLogger(__name__)
 
-# 全局 orchestrator（延迟初始化）
+_settings: Optional[MediaSettings] = None
 _orchestrator: Optional[ContentOrchestrator] = None
+_task_store: Optional[TaskStore] = None
+_task_worker: Optional[TaskWorker] = None
 
 
-def _get_env(key: str, default: str = "") -> str:
-    """读取环境变量，自动去除引号和空格"""
-    val = os.getenv(key, default)
-    if val:
-        val = val.strip().strip('"').strip("'")
-    return val
-
-
-def get_orchestrator() -> ContentOrchestrator:
-    """获取全局 Orchestrator（延迟初始化，从 .env 读取配置）"""
-    global _orchestrator
-    if _orchestrator is None:
-        # 文本模型客户端
-        backend = _get_env("MODEL_BACKEND", "mock")
-        if backend == "mock":
-            client = get_mock_client()
-        else:
-            config = ModelConfig(
-                backend=backend,
-                model_name=_get_env("MODEL_NAME", "ecommerce-copywriter"),
-                api_base=_get_env("API_BASE", "http://localhost:8000/v1"),
-                api_key=_get_env("API_KEY", "not-needed"),
-                model_path=_get_env("MODEL_PATH", ""),
-                lora_path=_get_env("LORA_PATH", ""),
-                temperature=float(_get_env("TEMPERATURE", "0.7")),
-                top_p=float(_get_env("TOP_P", "0.9")),
-                max_tokens=int(_get_env("MAX_TOKENS", "1024")),
-            )
-            client = create_client(config)
-
-        # 视频生成客户端（可选）
-        video_client = None
-        video_backend = _get_env("VIDEO_BACKEND", "")
-        if video_backend == "api":
-            video_config = VideoConfig(
-                backend="api",
-                api_key=_get_env("SEEDANCE_API_KEY", ""),
-                model=_get_env("SEEDANCE_MODEL", "doubao-seedance-1.0-pro"),
-                duration=int(_get_env("VIDEO_DURATION", "5")),
-                resolution=_get_env("VIDEO_RESOLUTION", "720p"),
-            )
-            video_client = create_video_client(video_config)
-        elif video_backend == "mock":
-            video_client = get_mock_video_client()
-
-        # 图片生成客户端（可选）
-        image_client = None
-        image_backend = _get_env("IMAGE_BACKEND", "")
-        if image_backend == "api":
-            image_config = ImageConfig(
-                backend="api",
-                api_key=_get_env("SEEDREAM_API_KEY", ""),
-                model=_get_env("SEEDREAM_MODEL", "doubao-seedream-3.0"),
-                image_size=_get_env("IMAGE_SIZE", "landscape_16_9"),
-            )
-            image_client = create_image_client(image_config)
-        elif image_backend == "mock":
-            image_client = get_mock_image_client()
-
-        max_rounds = int(_get_env("MAX_REWRITE_ROUNDS", "2"))
-        _orchestrator = ContentOrchestrator(
-            client,
-            max_rewrite_rounds=max_rounds,
-            video_client=video_client,
-            image_client=image_client,
-        )
-    return _orchestrator
-
-
-# ============================================================
-# 请求/响应模型
-# ============================================================
 class GenerateRequest(BaseModel):
-    title: str = Field(..., description="商品标题")
+    title: str = Field(..., min_length=1, description="商品标题")
     category: str = Field("other", description="商品品类")
     attributes: dict = Field(default_factory=dict, description="商品属性")
-    selling_points: list = Field(default_factory=list, description="卖点（可选，不填则自动生成）")
-    target_audience: str = Field("", description="目标人群（可选）")
-    price_positioning: str = Field("", description="价格定位: low/mid/high")
-    platform: str = Field("taobao", description="平台: taobao/amazon/douyin/xiaohongshu")
-    tone: str = Field("professional", description="语气风格")
-    constraints: list = Field(default_factory=list, description="约束条件")
+    selling_points: list = Field(default_factory=list, description="卖点")
+    target_audience: str = ""
+    price_positioning: str = ""
+    platform: str = "taobao"
+    tone: str = "professional"
+    constraints: list = Field(default_factory=list)
 
 
 class GenerateVideoRequest(GenerateRequest):
-    """生成文案 + 视频的请求"""
-    custom_video_prompt: str = Field("", description="自定义视频 prompt（可选，不填则自动生成）")
+    custom_video_prompt: str = ""
 
 
 class GenerateImageRequest(GenerateRequest):
-    """生成文案 + 图片的请求"""
-    custom_image_prompt: str = Field("", description="自定义图片 prompt（可选，不填则自动生成）")
+    custom_image_prompt: str = ""
 
 
 class GenerateAllRequest(GenerateRequest):
-    """生成文案 + 图片 + 视频的请求"""
-    custom_image_prompt: str = Field("", description="自定义图片 prompt（可选，不填则自动生成）")
-    custom_video_prompt: str = Field("", description="自定义视频 prompt（可选，不填则自动生成）")
+    custom_image_prompt: str = ""
+    custom_video_prompt: str = ""
 
 
 class GenerateResponse(BaseModel):
@@ -157,180 +70,259 @@ class GenerateResponse(BaseModel):
     rewrite_reason: str
     rewrite_history: list
     platform: str
-    video: Optional[dict] = None
     image: Optional[dict] = None
+    video: Optional[dict] = None
 
 
-# ============================================================
-# 接口
-# ============================================================
+class TaskAccepted(BaseModel):
+    task_id: str
+    kind: str
+    status: str
+    status_url: str
+
+
+class TaskResponse(TaskAccepted):
+    result: Optional[dict] = None
+    error: Optional[dict] = None
+    upstream_task_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+def _build_orchestrator(settings: MediaSettings) -> ContentOrchestrator:
+    backend = get_env("MODEL_BACKEND", "mock").lower()
+    if backend == "mock":
+        model_client = get_mock_client()
+    else:
+        model_client = create_client(ModelConfig(
+            backend=backend,
+            model_name=get_env("MODEL_NAME", "ecommerce-copywriter"),
+            api_base=get_env("API_BASE", "http://localhost:8000/v1"),
+            api_key=get_env("API_KEY", "not-needed"),
+            model_path=get_env("MODEL_PATH"),
+            lora_path=get_env("LORA_PATH"),
+            temperature=float(get_env("TEMPERATURE", "0.7")),
+            top_p=float(get_env("TOP_P", "0.9")),
+            max_tokens=int(get_env("MAX_TOKENS", "1024")),
+        ))
+
+    image_client = None
+    if settings.image_backend == "mock":
+        image_client = get_mock_image_client()
+        image_client.config.output_dir = str(settings.output_dir / "image")
+    elif settings.image_backend == "api":
+        image_client = create_image_client(ImageConfig(
+            backend="api",
+            api_url=settings.seedream_api_url,
+            api_key=settings.seedream_api_key,
+            model=settings.seedream_model,
+            image_size=settings.image_size,
+            output_dir=str(settings.output_dir / "image"),
+        ))
+
+    video_client = None
+    if settings.video_backend == "mock":
+        video_client = get_mock_video_client()
+        video_client.config.output_dir = str(settings.output_dir / "video")
+    elif settings.video_backend == "api":
+        video_client = create_video_client(VideoConfig(
+            backend="api",
+            create_url=settings.seedance_create_url,
+            query_url=settings.seedance_query_url,
+            api_key=settings.seedance_api_key,
+            model=settings.seedance_model,
+            duration=settings.video_duration,
+            resolution=settings.video_resolution,
+            ratio=settings.video_ratio,
+            poll_interval=settings.poll_interval,
+            max_wait=settings.max_wait,
+            output_dir=str(settings.output_dir / "video"),
+        ))
+
+    return ContentOrchestrator(
+        model_client,
+        max_rewrite_rounds=int(get_env("MAX_REWRITE_ROUNDS", "2")),
+        image_client=image_client,
+        video_client=video_client,
+    )
+
+
+def initialize_runtime() -> None:
+    global _settings, _orchestrator, _task_store, _task_worker
+    if _settings is not None:
+        return
+    settings = MediaSettings.from_env()
+    settings.validate()
+    store = TaskStore(settings.task_db_path)
+    store.initialize(recover_running=True)
+    _settings = settings
+    _task_store = store
+    _orchestrator = _build_orchestrator(settings)
+    _task_worker = TaskWorker(store, _execute_task)
+
+
+def _execute_task(task: dict) -> dict:
+    request = dict(task["request"])
+    product = ProductProfile.from_dict(request)
+    kind = task["kind"]
+    generate_image = kind == "all"
+    generate_video = kind in {"video", "all"}
+    package = get_orchestrator().generate(
+        product,
+        generate_image=generate_image,
+        generate_video=generate_video,
+        custom_image_prompt=request.get("custom_image_prompt", ""),
+        custom_video_prompt=request.get("custom_video_prompt", ""),
+        upstream_video_task_id=task.get("upstream_task_id") or "",
+        on_video_task_created=lambda upstream_id: get_task_store().set_upstream_task_id(task["id"], upstream_id),
+    )
+    return package.to_dict()
+
+
+def get_orchestrator() -> ContentOrchestrator:
+    if _orchestrator is None:
+        initialize_runtime()
+    return _orchestrator
+
+
+def get_task_store() -> TaskStore:
+    if _task_store is None:
+        initialize_runtime()
+    return _task_store
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_runtime()
+    _task_worker.start()
+    try:
+        yield
+    finally:
+        if _task_worker:
+            _task_worker.stop()
+
+
+app = FastAPI(
+    title="电商内容生产 Agent",
+    description="多平台文案、图片及异步视频生成服务",
+    version="0.5.0",
+    lifespan=lifespan,
+)
+
+
+def _task_payload(task: dict) -> dict:
+    return {
+        "task_id": task["id"],
+        "kind": task["kind"],
+        "status": task["status"],
+        "status_url": f"/tasks/{task['id']}",
+        "result": task.get("result"),
+        "error": task.get("error"),
+        "upstream_task_id": task.get("upstream_task_id"),
+        "created_at": task["created_at"],
+        "updated_at": task["updated_at"],
+    }
+
+
+def _raise_generation_error(exc: Exception) -> None:
+    logger.exception("Generation request failed")
+    upstream_status = getattr(exc, "status_code", None)
+    response_status = status.HTTP_502_BAD_GATEWAY if upstream_status else status.HTTP_500_INTERNAL_SERVER_ERROR
+    raise HTTPException(response_status, detail={
+        "type": type(exc).__name__,
+        "message": str(exc),
+        "upstream_status": upstream_status,
+        "upstream_code": getattr(exc, "error_code", ""),
+    }) from exc
+
+
 @app.get("/health")
 async def health():
-    backend = _get_env("MODEL_BACKEND", "mock")
-    video_backend = _get_env("VIDEO_BACKEND", "")
-    image_backend = _get_env("IMAGE_BACKEND", "")
-    return {
-        "status": "ok",
-        "version": "0.4.0",
-        "backend": backend,
-        "image_backend": image_backend if image_backend else "disabled",
-        "video_backend": video_backend if video_backend else "disabled",
-    }
+    return {"status": "ok", "version": "0.5.0"}
+
+
+@app.get("/ready")
+async def ready():
+    try:
+        initialize_runtime()
+        get_task_store().initialize()
+        return {
+            "status": "ready",
+            "image_backend": _settings.image_backend or "disabled",
+            "video_backend": _settings.video_backend or "disabled",
+        }
+    except (ConfigurationError, OSError) as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
-    """生成电商文案"""
     try:
-        product = ProductProfile.from_dict(req.dict())
-        orchestrator = get_orchestrator()
-        package = orchestrator.generate(product)
-        return GenerateResponse(**package.to_dict())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/generate/video", response_model=GenerateResponse)
-async def generate_video(req: GenerateVideoRequest):
-    """
-    生成电商文案 + 产品展示短视频
-
-    需要 .env 中配置 VIDEO_BACKEND=api 或 VIDEO_BACKEND=mock
-    """
-    try:
-        product = ProductProfile.from_dict(req.dict())
-        orchestrator = get_orchestrator()
-
-        # 自定义视频 prompt
-        custom_prompt = req.custom_video_prompt if req.custom_video_prompt else ""
-
-        package = orchestrator.generate(
-            product,
-            generate_video=True,
+        package = await run_in_threadpool(
+            get_orchestrator().generate,
+            ProductProfile.from_dict(req.model_dump()),
         )
-
-        # 如果有自定义 prompt，覆盖 video_agent 的结果
-        if custom_prompt and orchestrator.video_agent:
-            video_result = orchestrator.video_agent.run(
-                product=product,
-                content={
-                    "optimized_title": package.optimized_title,
-                    "selling_points": package.selling_points,
-                    "social_copy": package.social_copy,
-                },
-                platform=product.platform,
-                custom_prompt=custom_prompt,
-            )
-            package.video = video_result
-
         return GenerateResponse(**package.to_dict())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        _raise_generation_error(exc)
 
 
 @app.post("/generate/image", response_model=GenerateResponse)
 async def generate_image(req: GenerateImageRequest):
-    """
-    生成电商文案 + 产品展示图
-
-    需要 .env 中配置 IMAGE_BACKEND=api 或 IMAGE_BACKEND=mock
-    """
+    orchestrator = get_orchestrator()
+    if orchestrator.image_agent is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Image backend is disabled")
     try:
-        product = ProductProfile.from_dict(req.dict())
-        orchestrator = get_orchestrator()
-
-        custom_prompt = req.custom_image_prompt if req.custom_image_prompt else ""
-
-        package = orchestrator.generate(
-            product,
-            generate_image=True,
+        package = await run_in_threadpool(
+            orchestrator.generate,
+            ProductProfile.from_dict(req.model_dump()),
+            False,
+            True,
+            req.custom_image_prompt,
         )
-
-        if custom_prompt and orchestrator.image_agent:
-            image_result = orchestrator.image_agent.run(
-                product=product,
-                content={
-                    "optimized_title": package.optimized_title,
-                    "selling_points": package.selling_points,
-                    "social_copy": package.social_copy,
-                },
-                platform=product.platform,
-                custom_prompt=custom_prompt,
-            )
-            package.image = image_result
-
         return GenerateResponse(**package.to_dict())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        _raise_generation_error(exc)
 
 
-@app.post("/generate/all", response_model=GenerateResponse)
+def _enqueue(kind: str, request: dict) -> TaskAccepted:
+    orchestrator = get_orchestrator()
+    if orchestrator.video_agent is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Video backend is disabled")
+    if kind == "all" and orchestrator.image_agent is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Image backend is disabled")
+    task = get_task_store().create(kind, request)
+    return TaskAccepted(
+        task_id=task["id"],
+        kind=task["kind"],
+        status=task["status"],
+        status_url=f"/tasks/{task['id']}",
+    )
+
+
+@app.post("/generate/video", response_model=TaskAccepted, status_code=status.HTTP_202_ACCEPTED)
+async def generate_video(req: GenerateVideoRequest):
+    return _enqueue("video", req.model_dump())
+
+
+@app.post("/generate/all", response_model=TaskAccepted, status_code=status.HTTP_202_ACCEPTED)
 async def generate_all(req: GenerateAllRequest):
-    """
-    生成电商文案 + 产品展示图 + 产品展示短视频
-
-    一键生成全部内容
-    """
-    try:
-        product = ProductProfile.from_dict(req.dict())
-        orchestrator = get_orchestrator()
-
-        custom_image_prompt = req.custom_image_prompt if req.custom_image_prompt else ""
-        custom_video_prompt = req.custom_video_prompt if req.custom_video_prompt else ""
-
-        package = orchestrator.generate(
-            product,
-            generate_image=True,
-            generate_video=True,
-        )
-
-        if custom_image_prompt and orchestrator.image_agent:
-            image_result = orchestrator.image_agent.run(
-                product=product,
-                content={
-                    "optimized_title": package.optimized_title,
-                    "selling_points": package.selling_points,
-                    "social_copy": package.social_copy,
-                },
-                platform=product.platform,
-                custom_prompt=custom_image_prompt,
-            )
-            package.image = image_result
-
-        if custom_video_prompt and orchestrator.video_agent:
-            video_result = orchestrator.video_agent.run(
-                product=product,
-                content={
-                    "optimized_title": package.optimized_title,
-                    "selling_points": package.selling_points,
-                    "social_copy": package.social_copy,
-                },
-                platform=product.platform,
-                custom_prompt=custom_video_prompt,
-            )
-            package.video = video_result
-
-        return GenerateResponse(**package.to_dict())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return _enqueue("all", req.model_dump())
 
 
-@app.post("/generate/raw")
-async def generate_raw(req: dict):
-    """生成文案（原始 dict 输入/输出，不做 schema 校验）"""
-    try:
-        product = ProductProfile.from_dict(req)
-        orchestrator = get_orchestrator()
-        generate_vid = req.get("generate_video", False)
-        generate_img = req.get("generate_image", False)
-        package = orchestrator.generate(product, generate_video=generate_vid, generate_image=generate_img)
-        return package.to_dict()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
+async def get_task(task_id: str):
+    task = get_task_store().get(task_id)
+    if task is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    return TaskResponse(**_task_payload(task))
 
 
 if __name__ == "__main__":
     import uvicorn
-    host = _get_env("API_HOST", "0.0.0.0")
-    port = int(_get_env("API_PORT", "8888"))
-    uvicorn.run(app, host=host, port=port)
+
+    uvicorn.run(
+        app,
+        host=get_env("API_HOST", "127.0.0.1"),
+        port=int(get_env("API_PORT", "8888")),
+    )

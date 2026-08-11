@@ -16,7 +16,7 @@ import time
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 
 @dataclass
@@ -24,17 +24,28 @@ class VideoConfig:
     """视频生成配置"""
     backend: str = "mock"                    # mock / api
     # API 后端
-    api_url: str = "https://ark.cn-beijing.volces.com/api/v3/video/generations"
+    create_url: str = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
+    query_url: str = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
     api_key: str = ""
-    model: str = "doubao-seedance-1.0-pro"   # doubao-seedance-1.0-pro / doubao-seedance-1.0-lite
+    model: str = ""                          # 方舟模型或推理接入点 ID
     # 生成参数
     duration: int = 5                         # 5 / 10 秒
     resolution: str = "720p"                  # 720p / 1080p
+    ratio: str = "16:9"
     # 轮询参数
     poll_interval: int = 5                    # 轮询间隔（秒）
     max_wait: int = 300                       # 最大等待时间（秒）
     # 本地保存
     output_dir: str = "output/video"
+    request_timeout: int = 30
+    max_download_bytes: int = 500 * 1024 * 1024
+
+
+class VideoGenerationError(RuntimeError):
+    def __init__(self, message: str, status_code: int = None, error_code: str = ""):
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
 
 
 def create_video_client(config: VideoConfig) -> "VideoClient":
@@ -61,7 +72,13 @@ class VideoClient:
     def __init__(self, config: VideoConfig):
         self.config = config
 
-    def generate(self, prompt: str, save: bool = True) -> dict:
+    def generate(
+        self,
+        prompt: str,
+        save: bool = True,
+        task_id: str = "",
+        on_task_created: Optional[Callable[[str], None]] = None,
+    ) -> dict:
         """
         生成视频（异步任务 + 轮询等待）
 
@@ -81,24 +98,37 @@ class VideoClient:
 
         payload = {
             "model": self.config.model,
-            "prompt": prompt,
+            "content": [{"type": "text", "text": prompt}],
             "duration": self.config.duration,
             "resolution": self.config.resolution,
+            "ratio": self.config.ratio,
         }
 
-        # 步骤 1：提交生成任务
-        print(f"[VideoClient] 提交生成任务: model={self.config.model}, duration={self.config.duration}s")
-        resp = requests.post(self.config.api_url, headers=headers, json=payload, timeout=30)
-
-        if resp.status_code != 200:
-            raise Exception(f"提交任务失败 (HTTP {resp.status_code}): {resp.text[:500]}")
-
-        task_data = resp.json()
-        task_id = task_data.get("id", "")
+        # 首次执行时提交任务；恢复任务时直接继续轮询。
         if not task_id:
-            raise Exception(f"未返回 task_id: {task_data}")
+            print(f"[VideoClient] 提交生成任务: model={self.config.model}, duration={self.config.duration}s")
+            resp = requests.post(
+                self.config.create_url,
+                headers=headers,
+                json=payload,
+                timeout=self.config.request_timeout,
+            )
 
-        print(f"[VideoClient] 任务已提交: {task_id}")
+            if resp.status_code not in {200, 201, 202}:
+                raise self._api_error(resp, "提交视频任务失败")
+
+            try:
+                task_data = resp.json()
+            except ValueError as exc:
+                raise VideoGenerationError("视频任务接口返回了无效 JSON", resp.status_code) from exc
+            task_id = task_data.get("id", "")
+            if not task_id:
+                raise VideoGenerationError(f"视频任务响应中缺少 task_id: {task_data}")
+            if on_task_created:
+                on_task_created(task_id)
+            print(f"[VideoClient] 任务已提交: {task_id}")
+        else:
+            print(f"[VideoClient] 恢复轮询任务: {task_id}")
 
         # 步骤 2：轮询等待结果
         elapsed = 0
@@ -107,15 +137,22 @@ class VideoClient:
             elapsed += self.config.poll_interval
 
             status_resp = requests.get(
-                f"{self.config.api_url}/{task_id}",
+                f"{self.config.query_url.rstrip('/')}/{task_id}",
                 headers=headers,
-                timeout=30,
+                timeout=self.config.request_timeout,
             )
-            task = status_resp.json()
-            status = task.get("status", "")
+            if status_resp.status_code != 200:
+                raise self._api_error(status_resp, "查询视频任务失败")
+            try:
+                task = status_resp.json()
+            except ValueError as exc:
+                raise VideoGenerationError("视频任务查询返回了无效 JSON", status_resp.status_code) from exc
+            status = str(task.get("status", "")).lower()
 
-            if status == "completed":
-                video_url = task.get("output", {}).get("video_url", "")
+            if status in {"succeeded", "completed"}:
+                video_url = self._extract_video_url(task)
+                if not video_url:
+                    raise VideoGenerationError("视频任务成功但响应中缺少视频 URL")
                 print(f"[VideoClient] 生成完成 ({elapsed}s): {video_url}")
 
                 result = {
@@ -132,9 +169,9 @@ class VideoClient:
 
                 return result
 
-            if status == "failed":
+            if status in {"failed", "cancelled", "canceled"}:
                 error = task.get("error", "未知错误")
-                raise Exception(f"视频生成失败: {error}")
+                raise VideoGenerationError(f"视频生成失败: {error}")
 
             print(f"[VideoClient] 生成中... ({elapsed}s / {self.config.max_wait}s)")
 
@@ -151,22 +188,76 @@ class VideoClient:
         filepath = output_dir / filename
 
         print(f"[VideoClient] 下载视频到: {filepath}")
+        temp_path = filepath.with_suffix(filepath.suffix + ".part")
         resp = requests.get(url, stream=True, timeout=120)
         resp.raise_for_status()
 
-        with open(filepath, "wb") as f:
+        content_type = resp.headers.get("Content-Type", "").split(";", 1)[0].lower()
+        if content_type and not content_type.startswith("video/") and content_type != "application/octet-stream":
+            raise VideoGenerationError(f"视频下载返回了非视频内容: {content_type}")
+
+        downloaded = 0
+        with open(temp_path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                downloaded += len(chunk)
+                if downloaded > self.config.max_download_bytes:
+                    f.close()
+                    temp_path.unlink(missing_ok=True)
+                    raise VideoGenerationError("视频文件超过允许的最大大小")
                 f.write(chunk)
+
+        if downloaded == 0:
+            temp_path.unlink(missing_ok=True)
+            raise VideoGenerationError("下载到的视频为空")
+        temp_path.replace(filepath)
 
         size_mb = filepath.stat().st_size / (1024 * 1024)
         print(f"[VideoClient] 下载完成: {filepath} ({size_mb:.2f} MB)")
         return filepath
 
+    @staticmethod
+    def _extract_video_url(task: dict) -> str:
+        content = task.get("content", {})
+        if isinstance(content, dict):
+            url = content.get("video_url", "")
+            if url:
+                return url
+        output = task.get("output", {})
+        if isinstance(output, dict):
+            return output.get("video_url", "")
+        return task.get("video_url", "")
+
+    @staticmethod
+    def _api_error(resp, prefix: str) -> VideoGenerationError:
+        code = ""
+        message = resp.text[:500]
+        try:
+            body = resp.json()
+            error = body.get("error", body)
+            if isinstance(error, dict):
+                code = str(error.get("code", ""))
+                message = str(error.get("message", message))
+        except ValueError:
+            pass
+        return VideoGenerationError(
+            f"{prefix} (HTTP {resp.status_code}, code={code or 'unknown'}): {message}",
+            resp.status_code,
+            code,
+        )
+
 
 class MockVideoClient(VideoClient):
     """Mock 视频客户端 — 用于无网络环境下的流程验证"""
 
-    def generate(self, prompt: str, save: bool = True) -> dict:
+    def generate(
+        self,
+        prompt: str,
+        save: bool = True,
+        task_id: str = "",
+        on_task_created: Optional[Callable[[str], None]] = None,
+    ) -> dict:
         print(f"[MockVideoClient] 模拟视频生成...")
         print(f"[MockVideoClient] Prompt: {prompt[:80]}...")
 
