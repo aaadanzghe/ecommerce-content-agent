@@ -9,7 +9,11 @@
 
 ## 项目简介
 
-面向电商卖家的多 Agent 内容生产系统。以商品结构化信息为输入，通过 8 个业务 Agent 完成「商品理解 → 文案生成 → SEO 优化 → 合规审核 → 质量评分 → 自动重写 → 图片生成 → 短视频生成」流程。文本侧支持 Mock、vLLM、Transformers + LoRA 和 OpenAI 兼容 API；视觉侧已实现 Seedream、Seedance 客户端及 Mock 链路。
+面向电商卖家的多 Agent 内容生产系统。用户只需输入商品标题和品类，即可一键生成优化标题、核心卖点、详情文案、SEO 关键词、社媒推广文案、四维质量评分，以及产品展示图和短视频。
+
+> **示例**：输入「无线蓝牙耳机 + 3C数码」→ 输出「【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水」标题 + 5 个卖点 + 详情页文案 + 8 个 SEO 关键词 + 社媒种草文案 + 4.05/5 质量评分 + 产品展示图 + 15秒短视频。
+
+底层由 8 个业务 Agent 串联「商品理解 → 文案生成 → SEO 优化 → 合规审核 → 质量评分 → 自动重写 → 图片生成 → 短视频生成」流程。文本侧支持 Mock、vLLM、Transformers + LoRA 和 OpenAI 兼容 API；视觉侧已实现 Seedream、Seedance 客户端及 Mock 链路。
 
 > 当前状态：Mock 文案全链路已验证；图片和视频链路均已有真实 API 产物（见下方「真实产物展示」）；Qwen3-8B QLoRA 配置和脚本已就绪，训练结果尚未产出。
 
@@ -65,9 +69,9 @@
 
 ### 产品短视频（Seedance API）
 
-由 VideoGenerationAgent 构建视频 prompt 后调用 Seedance API 生成（小米手环 8 Pro · 抖音展示风格）：
+由 VideoGenerationAgent 构建视频 prompt 后调用 Seedance API 生成（TWS Pro 真无线降噪耳机 · 15秒产品展示视频）：
 
-[▶ 观看产品短视频](docs/showcase/xiaomi_band8_pro.mp4)
+[▶ 观看产品短视频](docs/showcase/tws_pro_video.mp4)
 
 ### 文案示例
 
