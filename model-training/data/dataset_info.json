@@ -1,0 +1,29 @@
+{
+  "ecommerce_copywriting": {
+    "file_name": "labeled/train.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "ecommerce_copywriting_val": {
+    "file_name": "labeled/val.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "ecommerce_copywriting_test": {
+    "file_name": "labeled/test.json",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  }
+}

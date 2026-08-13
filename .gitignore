@@ -95,6 +95,20 @@ desktop.ini
 
 # === 缓存 ===
 .cache/
+.pytest_cache/
+
+# === 前端依赖与构建产物 ===
+node_modules/
+*.tsbuildinfo
+
+# === 新目录结构下的本地数据、模型与训练产物 ===
+model-training/data/raw/
+model-training/data/labeled/
+model-training/data/generate_simulated.py
+model-training/models/
+model-training/outputs/
+model-training/vendor/
+agent-app/runtime/
 
 # === 日志 ===
 *.log
