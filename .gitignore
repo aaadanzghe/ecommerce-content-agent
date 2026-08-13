@@ -114,3 +114,4 @@ agent-app/runtime/
 *.log
 *.out
 *.err
+/docs/QLORA_FINETUNING_GUIDE.md
