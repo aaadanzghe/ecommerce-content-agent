@@ -23,7 +23,7 @@ lora_dropout: 0.05
 loraplus_lr_ratio: 16.0
 
 ### 数据集
-dataset_dir: "../data"
+dataset_dir: "../../data"
 dataset: ecommerce_copywriting
 # eval_dataset: ecommerce_copywriting_val  # disabled: eval bottleneck
 template: qwen3
@@ -45,11 +45,11 @@ report_to: none
 per_device_train_batch_size: 1
 per_device_eval_batch_size: 1
 gradient_accumulation_steps: 16
-learning_rate: 2.0e-4
+learning_rate: 5.0e-5
 num_train_epochs: 3.0
 lr_scheduler_type: cosine
-warmup_ratio: 0.05
-max_grad_norm: 1.0
+warmup_ratio: 0.1
+max_grad_norm: 0.5
 optim: adamw_8bit
 weight_decay: 0.01
 bf16: true
