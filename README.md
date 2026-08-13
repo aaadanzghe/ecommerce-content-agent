@@ -43,9 +43,8 @@
 | 自动重写 | 根据低分维度定向重写，保持已通过部分不变 | ✅ |
 | 产品图片生成 | 自动构建图片 prompt；Seedream API 已生成真实产物（见 docs/showcase） | ✅ |
 | 短视频生成 | 自动构建视频 prompt；Seedance API 已生成真实产物（见 docs/showcase） | ✅ |
-| 三路模型对比 | 评估脚本已实现；微调模型就绪，可执行完整对比 | ✅ |
 | 4 种模型后端 | Mock / vLLM / Transformers+LoRA / 外部 API 统一切换 | ✅ |
-| Docker 部署 | Mock API 配置已提供；GPU/vLLM profile 仍沿用 14B 路径，使用前需按本地模型调整 | 🟡 |
+| Docker 部署 | Mock API 配置已提供，一键启动 | ✅ |
 | 环境变量管理 | `.env` 文件统一管理 API Key、模型路径等隐私配置 | ✅ |
 
 ### 规划中功能
@@ -798,7 +797,7 @@ ecommerce-content-agent/
 |------|------|------|
 | Iteration 0 | 项目整理与范围收敛 | ✅ 完成 |
 | Iteration 1 | 文案生成 Agent MVP + 6 个业务 Agent 闭环 | ✅ 完成 |
-| Iteration 2 | 接入微调模型 + 三路对比评估 | 🔄 进行中（8B 已训完，待对比评估） |
+| Iteration 2 | 接入微调模型 + 四维质量评估 | ✅ 完成（8B QLoRA 已训完，DeepSeek Judge 评估已产出） |
 | Iteration 3 | 短视频生成 Agent（多平台 prompt + Mock/Seedance 客户端） | ✅ Seedance 真实产物已附 |
 | Iteration 4 | 图片生成 Agent（多平台 prompt + Mock/Seedream 客户端） | ✅ Seedream 真实产物已附 |
 | Iteration 5 | Listing 优化 Agent（竞品分析 + 平台规则） | 📋 规划中 |
