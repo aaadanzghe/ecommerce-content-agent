@@ -1,0 +1,24 @@
+# Runs the Agent API while keeping runtime output inside agent-app/runtime.
+services:
+  api:
+    build:
+      context: ../../..
+      dockerfile: agent-app/deploy/docker/Dockerfile
+    image: ecommerce-agent-api:latest
+    ports:
+      - "8888:8888"
+    env_file:
+      - ../../../.env
+    environment:
+      MODEL_BACKEND: ${MODEL_BACKEND:-mock}
+      IMAGE_BACKEND: ${IMAGE_BACKEND:-mock}
+      VIDEO_BACKEND: ${VIDEO_BACKEND:-mock}
+      MEDIA_OUTPUT_DIR: /workspace/agent-app/runtime
+    volumes:
+      - ../../runtime:/workspace/agent-app/runtime
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8888/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

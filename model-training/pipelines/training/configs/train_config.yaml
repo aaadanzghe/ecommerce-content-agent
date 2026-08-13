@@ -1,0 +1,64 @@
+# ============================================================
+# 电商文案生成 - QLoRA SFT 训练配置
+# 目标: Qwen3-14B Dense 微调，适配 RTX 5070 Ti 12GB
+# 框架: LLaMA-Factory
+# ============================================================
+
+### 模型配置
+model_name_or_path: "../../models/foundation/ms_cache/models/Qwen--Qwen3-14B/snapshots/master"
+template: qwen3
+trust_remote_code: true
+
+### 数据集
+dataset_dir: "../data"
+dataset: ecommerce_copywriting
+val_size: 0.0
+eval_dataset: ecommerce_copywriting_val
+cutoff_len: 1024
+preprocessing_num_workers: 4
+overwrite_cache: true
+
+### 输出
+output_dir: "../../outputs/training/ecommerce_qlora_sft"
+logging_steps: 10
+save_steps: 200
+save_total_limit: 3
+plot_loss: true
+
+### QLoRA 4-bit 量化（适配 12GB 显存）
+quantization_method: bnb
+quantization_bit: 4
+quantization_type: nf4
+double_quantization: true
+
+### LoRA 参数
+lora_rank: 64
+lora_alpha: 128
+lora_target: "all"
+lora_dropout: 0.05
+loraplus_lr_ratio: 16.0
+
+### 训练超参数
+finetuning_type: lora
+learning_rate: 2.0e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+num_train_epochs: 3.0
+per_device_train_batch_size: 4
+per_device_eval_batch_size: 4
+gradient_accumulation_steps: 4
+max_grad_norm: 1.0
+optim: adamw_8bit
+weight_decay: 0.01
+
+### 混合精度
+fp16: false
+bf16: true
+
+### 评估
+do_eval: true
+eval_strategy: steps
+eval_steps: 200
+predict_with_generate: true
+generation_max_length: 512
+generation_num_beams: 1
