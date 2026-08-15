@@ -11,7 +11,7 @@ Agent 编排器
 
 import json
 import time
-from src.schemas import ProductProfile, ContentPackage, QualityScore
+from src.schemas import ProductProfile, ContentPackage, QualityScore, ReferenceListing
 from src.inference.model_client import ModelClient, create_client, ModelConfig, get_mock_client
 from src.inference.video_client import VideoClient, VideoConfig, create_video_client, get_mock_video_client
 from src.inference.image_client import ImageClient, ImageConfig, create_image_client, get_mock_image_client
@@ -23,6 +23,7 @@ from src.agents.judge import JudgeAgent
 from src.agents.rewrite import RewriteAgent
 from src.agents.video_generation import VideoGenerationAgent
 from src.agents.image_generation import ImageGenerationAgent
+from src.agents.listing_insight import ListingInsightAgent
 
 
 class ContentOrchestrator:
@@ -58,6 +59,7 @@ class ContentOrchestrator:
         self.compliance_agent = ComplianceAgent(self.model)
         self.judge_agent = JudgeAgent(self.model)
         self.rewrite_agent = RewriteAgent(self.model)
+        self.listing_insight_agent = ListingInsightAgent(self.model)
 
         # 图片生成 Agent（可选）
         self.image_agent = None
@@ -78,6 +80,7 @@ class ContentOrchestrator:
         custom_video_prompt: str = "",
         upstream_video_task_id: str = "",
         on_video_task_created=None,
+        reference_listings=None,
     ) -> ContentPackage:
         """
         执行完整的文案生成闭环
@@ -97,6 +100,9 @@ class ContentOrchestrator:
         print(f"开始生成文案: {product.title}")
         print(f"{'='*60}")
 
+        references = [r if isinstance(r, ReferenceListing) else ReferenceListing.from_dict(r) for r in (reference_listings or [])]
+        listing_insight = self.listing_insight_agent.run(product, references=references)
+
         # 第 1 步：商品理解
         print("\n[1/8] 商品理解...")
         understanding = self.understanding_agent.run(product)
@@ -112,13 +118,13 @@ class ContentOrchestrator:
 
         # 第 2 步：文案生成
         print("\n[2/8] 文案生成...")
-        content = self.copywriting_agent.run(product)
+        content = self.copywriting_agent.run(product, listing_insight=listing_insight)
         print(f"  标题: {content['optimized_title']}")
         print(f"  卖点数: {len(content['selling_points'])}")
 
         # 第 3 步：SEO 关键词
         print("\n[3/8] SEO 关键词...")
-        seo_result = self.seo_agent.run(product)
+        seo_result = self.seo_agent.run(product, listing_insight=listing_insight)
         content["seo_keywords"] = seo_result.get("seo_keywords", [])
         print(f"  关键词: {content['seo_keywords']}")
 
@@ -190,6 +196,10 @@ class ContentOrchestrator:
             rewrite_reason=rewrite_reason,
             rewrite_history=rewrite_history,
             platform=product.platform,
+            listing_insight=listing_insight,
+            evidence=listing_insight.get("evidence_refs", []),
+            optimization_reasons=listing_insight.get("competitor_gaps", []),
+            risks=listing_insight.get("compliance_risks", []) + listing_insight.get("similarity_warnings", []),
         )
 
         # 第 7 步：图片生成（可选）

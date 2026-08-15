@@ -38,6 +38,9 @@ class SEOAgent(BaseAgent):
     def run(self, product: ProductProfile, **kwargs) -> dict:
         product_info = json.dumps(product.to_prompt_dict(), ensure_ascii=False, indent=2)
         user_msg = USER_PROMPT_TEMPLATE.format(product_info=product_info)
+        insight = kwargs.get("listing_insight") or {}
+        if insight:
+            user_msg += "\n\n参考商品关键词洞察（仅作候选，不得捏造商品事实）：\n" + json.dumps(insight, ensure_ascii=False)
 
         result = self.model.chat_json(user_msg, SYSTEM_PROMPT)
 

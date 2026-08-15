@@ -76,10 +76,13 @@ class CopywritingAgent(BaseAgent):
         style = PLATFORM_STYLE[platform]
         platform_style = f"标题: {style['title_rule']}; 描述: {style['desc_rule']}; 社媒: {style['social_rule']}"
 
+        insight = kwargs.get("listing_insight") or {}
         user_msg = USER_PROMPT_TEMPLATE.format(
             product_info=product_info,
             platform_style=platform_style,
         )
+        if insight:
+            user_msg += "\n\n参考商品洞察（只学习结构和关键词，禁止复制原句）：\n" + json.dumps(insight, ensure_ascii=False)
 
         result = self.model.chat_json(user_msg, SYSTEM_PROMPT)
 

@@ -7,7 +7,7 @@ QualityScore: 质量评分
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from enum import Enum
 
 
@@ -69,6 +69,49 @@ class ProductProfile:
             constraints=data.get("constraints", []),
             original_description=data.get("original_description", ""),
         )
+
+
+@dataclass
+class ReferenceListing:
+    """公开渠道采集的竞品/参考 Listing 快照。"""
+    platform: str = "taobao"
+    source_url: str = ""
+    title: str = ""
+    brand: str = ""
+    category: str = ""
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    selling_points: List[str] = field(default_factory=list)
+    price: Dict[str, Any] = field(default_factory=dict)
+    rating: Optional[float] = None
+    review_count: Optional[int] = None
+    sales_or_rank: Dict[str, Any] = field(default_factory=dict)
+    description: str = ""
+    keywords: List[str] = field(default_factory=list)
+    collected_at: str = ""
+    data_confidence: float = 0.0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ReferenceListing":
+        return cls(**{k: data[k] for k in cls.__dataclass_fields__ if k in data})
+
+    def to_dict(self) -> dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+
+@dataclass
+class ListingInsight:
+    """从参考 Listing 提取的可复用模式，不包含可直接复制的文案。"""
+    keyword_clusters: List[str] = field(default_factory=list)
+    selling_point_priorities: List[str] = field(default_factory=list)
+    user_pains: List[str] = field(default_factory=list)
+    scene_patterns: List[str] = field(default_factory=list)
+    competitor_gaps: List[str] = field(default_factory=list)
+    compliance_risks: List[str] = field(default_factory=list)
+    evidence_refs: List[dict] = field(default_factory=list)
+    similarity_warnings: List[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
 
 
 @dataclass
@@ -140,6 +183,10 @@ class ContentPackage:
     platform: str = "taobao"
     video: Optional[dict] = None      # 视频生成结果（可选）
     image: Optional[dict] = None      # 图片生成结果（可选）
+    listing_insight: Optional[dict] = None
+    evidence: List[dict] = field(default_factory=list)
+    optimization_reasons: List[str] = field(default_factory=list)
+    risks: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         result = {
@@ -151,6 +198,10 @@ class ContentPackage:
             "platform": self.platform,
             "rewrite_reason": self.rewrite_reason,
             "rewrite_history": self.rewrite_history,
+            "listing_insight": self.listing_insight,
+            "evidence": self.evidence,
+            "optimization_reasons": self.optimization_reasons,
+            "risks": self.risks,
         }
         if self.quality_score:
             result["quality_score"] = self.quality_score.to_dict()
