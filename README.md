@@ -276,8 +276,6 @@ docker-compose up -d
 docker-compose --profile vllm --profile full up -d
 ```
 
-> `docker-compose.yml` 的 vLLM 服务当前指向 `Qwen3-14B-Instruct` 和 `output/ecommerce_qlora_sft`，与当前 8B 训练主线不同；使用 GPU profile 前请按实际模型目录修改。
->
 > 当前生产基线是本地虚拟环境直接运行。Docker 配置尚未纳入本轮真实多模态上线验收。
 
 ## API 文档
@@ -584,7 +582,7 @@ curl http://localhost:8888/tasks/<task_id>
 | AdvertiseGen | 清华 CoAI | 114K 条 | 2,000 条（服装类专家样本） | CC BY-NC 4.0 |
 | 天池商品描述 | 阿里云天池 | 212 万条 | 18,000 条（9 品类均衡） | CC BY-NC 4.0 |
 
-最终数据集：**19,885 条**，**9 品类均衡**（3c_digital / clothing / beauty / food / home / maternity_baby / auto / sports_outdoor / other），Alpaca 格式，**8:1:1** 划分。
+最终数据集：**19,885 条**，**9 品类均衡**（3c_digital / clothing / beauty / food / home / maternity_baby / auto / sports_outdoor / other），Alpaca 格式，**8:1:1** 划分（训练 15,908 条 / 验证 1,988 条 / 测试 1,989 条）。
 
 ### 数据增强
 
