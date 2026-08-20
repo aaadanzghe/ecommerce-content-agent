@@ -13,13 +13,14 @@
 
 > **示例**：输入「无线蓝牙耳机 + 3C数码」→ 输出「【主动降噪】TWS Pro真无线蓝牙耳机 30小时续航 IPX5防水」标题 + 5 个卖点 + 详情页文案 + 8 个 SEO 关键词 + 社媒种草文案 + 4.05/5 质量评分 + 产品展示图 + 15秒短视频。
 
-底层由 8 个业务 Agent 串联「商品理解 → 文案生成 → SEO 优化 → 合规审核 → 质量评分 → 自动重写 → 图片生成 → 短视频生成」流程。文本侧支持 Mock、vLLM、Transformers + LoRA 和 OpenAI 兼容 API；视觉侧已实现 Seedream、Seedance 客户端及 Mock 链路。
+底层由 9 个业务 Agent 串联「商品理解 → 文案生成 → SEO 优化 → 合规审核 → 质量评分 → 自动重写 → Listing 竞品分析 → 图片生成 → 短视频生成」流程。文本侧支持 Mock、vLLM、Transformers + LoRA 和 OpenAI 兼容 API；视觉侧已实现 Seedream、Seedance 客户端及 Mock 链路。
 
 > 当前状态：Mock 文案全链路已验证；图片和视频链路均已有真实 API 产物（见下方「真实产物展示」）；Qwen3-8B QLoRA 已完成训练（Loss 3.7→1.4，1h57min，RTX 5070 Ti 12GB）。
 
 ### 核心特点
 
 - **Agent 闭环**：生成 → 评分 → 重写 → 再评分，低质量内容自动优化，最多 N 轮迭代
+- **Listing 竞品分析**：从参考商品提取关键词簇、卖点优先级、场景模式和竞品缺口，避免文案同质化
 - **图片生成**：按平台构建图片 prompt，Seedream API 已生成真实产物（见 `docs/showcase/`）
 - **短视频生成**：按平台构建视频 prompt，Seedance API 已生成真实产物（见 `docs/showcase/`）
 - **微调模型接入**：支持通过 Transformers + LoRA 或 vLLM 加载微调结果；当前训练主线为 Qwen3-8B
@@ -41,6 +42,7 @@
 | 合规检查 | 确定性规则（13+ 广告法违禁词）+ LLM 双重审核 | ✅ |
 | 质量评分 | LLM-as-Judge 四维评分（准确性/吸引力/合规性/SEO） | ✅ |
 | 自动重写 | 根据低分维度定向重写，保持已通过部分不变 | ✅ |
+| Listing 竞品分析 | 从参考商品提取关键词簇、卖点优先级、场景模式和竞品缺口 | ✅ |
 | 产品图片生成 | 自动构建图片 prompt；Seedream API 已生成真实产物（见 docs/showcase） | ✅ |
 | 短视频生成 | 自动构建视频 prompt；Seedance API 已生成真实产物（见 docs/showcase） | ✅ |
 | 4 种模型后端 | Mock / vLLM / Transformers+LoRA / 外部 API 统一切换 | ✅ |
@@ -51,7 +53,6 @@
 
 | 功能模块 | 说明 | 优先级 |
 |---------|------|--------|
-| Listing 优化 Agent | 基于竞品分析 + 平台规则，优化 Listing 排名 | 高 |
 | RAG 知识库 | 平台规则、品牌资料、商品目录、竞品信息的向量检索增强 | 高 |
 | LangGraph 编排 | Supervisor 动态路由 + Checkpoint 持久化 | 中 |
 | 异步任务 + SSE | 任务队列 + 实时推送生成进度 | 低 |
@@ -71,6 +72,54 @@
 由 VideoGenerationAgent 构建视频 prompt 后调用 Seedance API 生成（TWS Pro 真无线降噪耳机 · 15秒产品展示视频）：
 
 [▶ 观看产品短视频](docs/showcase/tws_pro_video.mp4)
+
+### Listing 竞品分析
+
+由 ListingInsightAgent 从 3 个竞品参考商品中提取关键词簇、卖点优先级、场景模式和竞品缺口（TWS Pro 真无线降噪耳机 · 淘宝平台）：
+
+<details>
+<summary>点击展开 Listing 竞品分析结果（JSON）</summary>
+
+```json
+{
+  "keyword_clusters": [
+    "ipx7", "anc", "降噪耳机", "蓝牙耳机", "长续航",
+    "运动耳机", "通话降噪", "快充", "深度防水"
+  ],
+  "selling_point_priorities": [
+    "ANC主动降噪沉浸体验",
+    "蓝牙5.3低延迟游戏模式",
+    "30小时超长续航",
+    "IPX5运动防水",
+    "13mm大动圈HiFi音质",
+    "双麦克风通话降噪",
+    "TYPE-C快充",
+    "轻量化设计久戴不痛",
+    "兼容苹果华为小米",
+    "IPX7深度防水"
+  ],
+  "scene_patterns": [
+    "蓝牙5.3低延迟游戏模式",
+    "IPX5运动防水"
+  ],
+  "competitor_gaps": [
+    "参考商品高频词\"ipx7\"未出现在当前商品事实中",
+    "参考商品高频词\"降噪耳机\"未出现在当前商品事实中",
+    "参考商品高频词\"长续航\"未出现在当前商品事实中",
+    "参考商品高频词\"运动耳机\"未出现在当前商品事实中",
+    "参考商品高频词\"通话降噪\"未出现在当前商品事实中"
+  ],
+  "evidence_refs": [
+    {"title": "主动降噪真无线蓝牙耳机 入耳式游戏低延迟", "confidence": 0.85},
+    {"title": "无线降噪耳机 超长续航 通话降噪 适用苹果华为", "confidence": 0.78},
+    {"title": "运动防水蓝牙耳机 IPX7 防汗 瑜伽跑步专用", "confidence": 0.72}
+  ]
+}
+```
+
+</details>
+
+> 完整产物见 `docs/showcase/listing_insight_demo.json`。Listing 分析结果为纯结构化数据，不包含可直接复制的竞品文案，避免同质化风险。
 
 ### 文案示例
 
@@ -705,7 +754,7 @@ client = create_client(ModelConfig(
 
 | 项目 | 定位 | 电商专注度 | 多 Agent | 微调模型 | 图文视频 | 开源 |
 |------|------|-----------|---------|---------|---------|------|
-| **本项目** | 电商内容生产闭环 | ⭐⭐⭐⭐⭐ | 8 Agent | Qwen3-8B QLoRA（已完成） | 图片+视频真实产物已附 | ✅ |
+| **本项目** | 电商内容生产闭环 | ⭐⭐⭐⭐⭐ | 9 Agent | Qwen3-8B QLoRA（已完成） | 图片+视频真实产物已附 | ✅ |
 | [EcomGPT](https://github.com/Alibaba-NLP/EcomGPT) | 电商指令微调 LLM | ⭐⭐⭐⭐⭐ | ❌ | BLOOMZ | ❌ | ✅ |
 | [KOBE](https://github.com/THUDM/KOBE) | 知识驱动产品描述 | ⭐⭐⭐⭐ | ❌ | Seq2Seq | ❌ | ✅ |
 | [ecommerce-ai-roadmap](https://github.com/kangise/ecommerce-ai-roadmap) | 电商 AI 知识库 | ⭐⭐⭐⭐⭐ | Prompt 工程 | ❌ | ❌ | ✅ |
@@ -734,6 +783,7 @@ ecommerce-content-agent/
 │   │   ├── compliance.py           # 合规检查（确定性规则 + LLM）
 │   │   ├── judge.py                # LLM-as-Judge 四维评分
 │   │   ├── rewrite.py              # 自动重写 Agent
+│   │   ├── listing_insight.py      # Listing 竞品分析 Agent
 │   │   ├── video_generation.py     # 视频生成 Agent（Seedance 集成）
 │   │   ├── image_generation.py     # 图片生成 Agent（Seedream 集成）
 │   │   └── orchestrator.py         # Agent 编排器
@@ -798,7 +848,7 @@ ecommerce-content-agent/
 | Iteration 2 | 接入微调模型 + 四维质量评估 | ✅ 完成（8B QLoRA 已训完，DeepSeek Judge 评估已产出） |
 | Iteration 3 | 短视频生成 Agent（多平台 prompt + Mock/Seedance 客户端） | ✅ Seedance 真实产物已附 |
 | Iteration 4 | 图片生成 Agent（多平台 prompt + Mock/Seedream 客户端） | ✅ Seedream 真实产物已附 |
-| Iteration 5 | Listing 优化 Agent（竞品分析 + 平台规则） | 📋 规划中 |
+| Iteration 5 | Listing 优化 Agent（竞品分析 + 平台规则） | ✅ 完成（含单元测试 + 产物展示） |
 | Iteration 6 | RAG 知识库（平台规则 + 品牌资料 + 商品目录） | 📋 规划中 |
 | Iteration 7 | LangGraph 编排 + Supervisor 路由 + Checkpoint | 📋 规划中 |
 | Iteration 8 | 异步任务队列 + SSE + 批量生成 | 📋 远期 |
